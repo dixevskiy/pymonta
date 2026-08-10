@@ -12,6 +12,8 @@ wheels/
 # Virtual environments
 .venv
 
-# Videos
+# Videos and stuff
 
 *.mp4
+*.png
+*.jpg
