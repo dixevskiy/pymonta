@@ -1,7 +1,7 @@
 import asyncio
 import math
 from enum import Enum
-from itertools import count
+from itertools import chain, count
 from pathlib import Path
 
 from ffmpeg.asyncio import FFmpeg
@@ -33,6 +33,7 @@ class VideoText:
         location: TextLocations,
         size: int = 34,
         /,
+        font_color: str = "white",
         end_time: int | None = None,
         wraplenght: int = 32,
         text_align: str = "C",
@@ -46,6 +47,7 @@ class VideoText:
         Confusing arguments:
             text_align can be: C=center, L=left, R=right.
             end_time calculates automatically based on length of text.
+            font_color should be HEX to save your sanity.
         """
         self.start_time = start_time
         self.location = location
@@ -53,6 +55,7 @@ class VideoText:
         self.wraplenght = wraplenght
         self.text_align = text_align
         self.base_stream = base_stream
+        self.font_color = font_color
         # calculate end time based on average reading speed
         # average wpm is 150, average word length is 4, 150*4/60 = 10 symbols per second
         self.end_time = (
@@ -86,7 +89,7 @@ class VideoText:
             self.text = " ".join(wrapped_string_build)
 
     def __str__(self):
-        return f"{self.base_stream}drawtext=enable='between(t,{self.start_time},{self.end_time})':text='{self.text}':fontcolor=white:text_align={self.text_align}:fontsize={self.size}:{self.location.value}[overlayed]"
+        return f"{self.base_stream}drawtext=enable='between(t,{self.start_time},{self.end_time})':text='{self.text}':fontcolor={self.font_color}:text_align={self.text_align}:fontsize={self.size}:{self.location.value}[overlayed]"
 
 
 class VideoImage:
@@ -119,34 +122,32 @@ class VideoImage:
             self.end_time = linked_text.end_time
 
     def __str__(self):
-        return f"[{self.image_index}:v]scale={self.size}:-1[img];{self.base_stream}[img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})'[overlayed]"
+        base = f"[{self.image_index}:v]scale={self.size}:-1[img];{self.base_stream}[img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})'[overlayed]"
+        if self.linked_text:
+            return f"{base};{self.linked_text!s}"
+        return base
 
 
-def compose_complex_filter(
-    images: list[VideoImage] | None, texts: list[VideoText] | None
-) -> str:
+def compose_video(
+    images: list[VideoImage] | None = None, texts: list[VideoText] | None = None
+) -> tuple[str, str]:
     """
     High level video composition function
+
+    Returns:
+        complex_filter value to pass in ffmpeg
+        output_stream to pass in ffmpeg
     """
-    base_video = "[0:v]"
-    filter_complex = ""
-    # Handles images first, but it doesn't matter
-    if images:
-        images[0].base_stream = base_video
-        filter_complex = f"{';'.join(map(str, images))};"
-        for image in images:
-            if image.linked_text:
-                filter_complex += f"{image.linked_text!s};"
-        if texts:
-            filter_complex += ";".join(map(str, texts))
-        return filter_complex
-    if texts:
-        texts[0].base_stream = base_video
-        filter_complex = f"{';'.join(map(str, texts))};"
-        if images:
-            filter_complex += ";".join(map(str, images))
-        return filter_complex
-    return filter_complex
+    if texts is None:
+        texts = []
+    if images is None:
+        images = []
+    filters_seq = list(chain(images, texts))
+    # To start filter chain the first one must use video as base
+    filters_seq[0].base_stream = "[0:v]"
+    filter_complex = f"{';'.join(map(str, filters_seq))}"
+    output_stream = "[overlayed]"
+    return (filter_complex, output_stream)
 
 
 async def main():
@@ -155,7 +156,16 @@ async def main():
         Path("o.mp4").unlink()
 
     overlays = [
-        VideoImage(1, ImageLocations.UPPER_RIGHT, linked_text=VideoText(1, "Это АРА!\nПрикольни реплика <3", TextLocations.HORIZONTAL_RIGHT)),
+        VideoImage(
+            1,
+            ImageLocations.UPPER_RIGHT,
+            linked_text=VideoText(
+                1,
+                "Это АРА!\nПрикольни реплика <3",
+                TextLocations.HORIZONTAL_RIGHT,
+                font_color="556B2F",
+            ),
+        ),
         VideoImage(
             1,
             ImageLocations.BOTTOM_LEFT,
@@ -168,7 +178,7 @@ async def main():
         VideoText(0, "Действительно...", TextLocations.UPPER_LEFT),
     ]
 
-    filter_complex = compose_complex_filter(overlays, texts)
+    filter_complex, result_stream = compose_video(overlays, texts)
 
     ffmpeg = (
         FFmpeg()
@@ -176,7 +186,7 @@ async def main():
         .input("sig2.png")
         .input("p1.jpg")
         .output(
-            "o.mp4", filter_complex=filter_complex, map="[overlayed]", acodec="copy"
+            "o.mp4", filter_complex=filter_complex, map=result_stream, acodec="copy"
         )
     )
 
