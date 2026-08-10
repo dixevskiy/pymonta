@@ -1,5 +1,6 @@
 import asyncio
 from enum import Enum
+import math
 from pathlib import Path
 
 from ffmpeg.asyncio import FFmpeg
@@ -14,7 +15,6 @@ class Locations(Enum):
 
 
 def paste_text(
-    ffmpeg: FFmpeg,
     start_time: int,
     text: str,
     location: Locations,
@@ -22,9 +22,20 @@ def paste_text(
     /,
     end_time: int | None = None,
     wraplenght: int = 32,
-) -> FFmpeg:
+    text_align: str = "C",
+) -> dict[str, str]:
+    """
+    Place text in your video.
 
-    end_time = start_time + 10 if not end_time else end_time
+    Returns:
+        FFmpeg instance for chaining.
+    Confusing arguments:
+        text_align can be: C=center, L=left, R=right.
+        end_time calculates automatically based on length of text.
+    """
+    # calculate end time based on average reading speed
+    # average wpm is 150, average word length is 4, 150*4/60 = 10 symbols per second
+    end_time = start_time + math.ceil(len(text) / 10) if not end_time else end_time
 
     # cli safeguard
     text = text.replace("'", "")
@@ -52,21 +63,39 @@ def paste_text(
             wrapped_string_build.append(word)
         text = " ".join(wrapped_string_build)
 
-    return ffmpeg.output(
-        "o.mp4",
-        vf=rf"drawtext=enable='between(t,{start_time},{end_time})':text='{text}':fontcolor=white:text_align=C:fontsize={size}:{location.value}",
-    )
+    return {
+        "vf": rf"drawtext=enable='between(t,{start_time},{end_time})':text='{text}':fontcolor=white:text_align={text_align}:fontsize={size}:{location.value}"
+    }
+
+
+def paste_imgae(
+    start_time: int,
+    image_path: str,
+    location: Locations,
+    size: int = 34,
+    /,
+    end_time: int | None = None,
+) -> dict[str, str]: ...
 
 
 async def main():
     video = "input.mp4"
     if Path("o.mp4").exists():
         Path("o.mp4").unlink()
-    ffmpeg = paste_text(
-        FFmpeg().input(video),
-        1,
-        "Я немного просчитался.\nОйле была названа не в честь ученного, а в качестве аббревиатуры.",
-        Locations.UPPER_RIGHT,
+    # ffmpeg = paste_text(
+    #     FFmpeg().input(video),
+    #     1,
+    #     "Здесь.",
+    #     Locations.UPPER_RIGHT,
+    # )
+    ffmpeg = (
+        FFmpeg()
+        .input(video)
+        .output(
+            "o.mp4",
+            # Use pipe operator | for dict combining
+            paste_text(1, "Мяу", Locations.BOTTOM_LEFT),  # pyright: ignore[reportArgumentType]
+        )
     )
 
     await asyncio.create_task(ffmpeg.execute())
