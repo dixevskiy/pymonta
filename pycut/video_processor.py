@@ -24,11 +24,20 @@ class ImageLocations(Enum):
     UPPER_RIGHT = "x=(W-w)/2+(W-w)/2.5:y=(H-h)/2-(H-h)/3"
     UPPER_LEFT = "x=(W-tw)/2-(W-w)/2.5:y=(H-h)/2-(H-h)/3"
 
+def _time_converter(human_time: str) -> int:
+    if ":" in human_time:
+        min, sec = human_time.split(':')
+        return int(min) * 60 + int(sec)
+    if "m" in human_time:
+        min, sec = human_time.split('m')
+        return int(min) * 60 + int(sec)
+    human_time.replace("s", "")
+    return int(human_time)
 
 class VideoText:
     def __init__(
         self,
-        start_time: int,
+        start_time: str,
         text: str,
         location: TextLocations,
         size: int = 34,
@@ -49,7 +58,7 @@ class VideoText:
             end_time calculates automatically based on length of text.
             font_color should be HEX to save your sanity.
         """
-        self.start_time = start_time
+        self.start_time = _time_converter(start_time)
         self.location = location
         self.size = size
         self.wraplenght = wraplenght
@@ -59,7 +68,7 @@ class VideoText:
         # calculate end time based on average reading speed
         # average wpm is 150, average word length is 4, 150*4/60 = 10 symbols per second
         self.end_time = (
-            start_time + math.ceil(len(text) / 10) if not end_time else end_time
+            self.start_time + math.ceil(len(text) / 10) if not end_time else end_time
         )
 
         # cli safeguard
@@ -97,7 +106,7 @@ class VideoImage:
 
     def __init__(
         self,
-        start_time: int,
+        start_time: str,
         location: ImageLocations,
         size: int = 320,
         /,
@@ -105,11 +114,17 @@ class VideoImage:
         base_stream: str = "[overlayed]",
         end_time: int | None = None,
     ) -> None:
-        self.start_time = start_time
+        """
+        Create instance of VideoImage
+
+        Strange arguments:
+            start_time can be formatted as "1m20s", "1:20", "80", "1m20"
+        """
+        self.start_time = _time_converter(start_time)
         self.location = location.value
         self.size = size
         self.base_stream = base_stream
-        self.end_time = start_time + 5 if not end_time else end_time
+        self.end_time = self.start_time + 5 if not end_time else end_time
         self.linked_text = None
 
         # total count of VideoImage instances
@@ -157,25 +172,25 @@ async def main():
 
     overlays = [
         VideoImage(
-            1,
+            "1",
             ImageLocations.UPPER_RIGHT,
             linked_text=VideoText(
-                1,
+                "1",
                 "Это АРА!\nПрикольни реплика <3",
                 TextLocations.HORIZONTAL_RIGHT,
                 font_color="556B2F",
             ),
         ),
         VideoImage(
-            1,
+            "1",
             ImageLocations.BOTTOM_LEFT,
             340,
-            linked_text=VideoText(1, "Это экспи!", TextLocations.HORIZONTAL_LEFT),
+            linked_text=VideoText("0:1", "Это экспи!", TextLocations.HORIZONTAL_LEFT),
         ),
     ]
     texts = [
-        VideoText(1, "Я МОГУ ВСЕ!!!", TextLocations.BOTTOM_RIGHT),
-        VideoText(0, "Действительно...", TextLocations.UPPER_LEFT),
+        VideoText("1", "Я МОГУ ВСЕ!!!", TextLocations.BOTTOM_RIGHT),
+        VideoText("2", "Действительно...", TextLocations.UPPER_LEFT),
     ]
 
     filter_complex, result_stream = await asyncio.create_task(

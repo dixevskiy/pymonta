@@ -7,7 +7,10 @@ async def find_keywords(
     video_path: str, keyword: str, model_size="small"
 ) -> list[tuple[int, int]] | None:
     """
-    Function which transcribes video and returns timestamps of keyword accurance
+    Function which transcribes video and returns timestamps of keyword accurance.
+
+    Returns:
+        list of tuples with timestamps, first is start, second is end in seconds.
     """
     model = whisper.load_model(model_size)
     result = model.transcribe(video_path, language="ru")
