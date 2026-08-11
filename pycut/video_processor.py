@@ -1,10 +1,14 @@
 import asyncio
+import logging
 import math
 from enum import Enum
 from itertools import chain, count
 from pathlib import Path
+import re
 
 from ffmpeg.asyncio import FFmpeg
+
+LOGGER = logging.getLogger(__name__)
 
 
 class TextLocations(Enum):
@@ -24,15 +28,20 @@ class ImageLocations(Enum):
     UPPER_RIGHT = "x=(W-w)/2+(W-w)/2.5:y=(H-h)/2-(H-h)/3"
     UPPER_LEFT = "x=(W-tw)/2-(W-w)/2.5:y=(H-h)/2-(H-h)/3"
 
+
 def _time_converter(human_time: str) -> int:
+    human_time = human_time.replace("s", "")
     if ":" in human_time:
-        min, sec = human_time.split(':')
+        hours, min, sec = human_time.split(":")
+        return int(hours) * 3600 + int(min) * 60 + int(sec)
+    if "m" in human_time and "h" not in human_time:
+        min, sec = human_time.split("m")
         return int(min) * 60 + int(sec)
-    if "m" in human_time:
-        min, sec = human_time.split('m')
-        return int(min) * 60 + int(sec)
-    human_time.replace("s", "")
+    if "h" in human_time:
+        hours, min, sec = human_time.replace("h", ":").replace("m", ":").split(":")
+        return int(hours) * 3600 + int(min) * 60 + int(sec)
     return int(human_time)
+
 
 class VideoText:
     def __init__(
@@ -106,6 +115,7 @@ class VideoImage:
 
     def __init__(
         self,
+        image_path: str,
         start_time: str,
         location: ImageLocations,
         size: int = 320,
@@ -120,6 +130,7 @@ class VideoImage:
         Strange arguments:
             start_time can be formatted as "1m20s", "1:20", "80", "1m20"
         """
+        self.path = image_path
         self.start_time = _time_converter(start_time)
         self.location = location.value
         self.size = size
@@ -143,35 +154,125 @@ class VideoImage:
         return base
 
 
-async def compose_video(
-    images: list[VideoImage] | None = None, texts: list[VideoText] | None = None
-) -> tuple[str, str]:
+class VideoTrim:
+    def __init__(
+        self, start_time: str, end_time: str, /, base_stream: str = "[overlayed]"
+    ):
+        self.start_time = _time_converter(start_time)
+        self.end_time = _time_converter(end_time)
+        self.base_stream = base_stream
+
+    def __str__(self):
+        return f"{self.base_stream}trim=start={self.start_time}:end={self.end_time},setpts=PTS-STARTPTS[overlayed]"
+
+
+class VideoCut:
+    def __init__(
+        self, start_time: str, end_time: str, /, base_video_stream: str = "[overlayed]", base_audio_stream: str = "[overaudio]"
+    ):
+        self.start_time = _time_converter(start_time)
+        self.end_time = _time_converter(end_time)
+        self.base_stream = base_video_stream
+        self.base_audio_stream = base_audio_stream
+        
+
+    def __str__(self):
+        return f"{self.base_stream}select='not(between(t,{self.start_time},{self.end_time}))',setpts=N/FRAME_RATE/TB[overlayed];{self.base_audio_stream}aselect='not(between(t,{self.start_time},{self.end_time}))',asetpts=N/SR/TB[overaudio]"
+
+
+async def detect_silence_fragments(
+    video_path: str, silence_threshold=-40, min_duration=5
+):
+    ffmpeg = (
+        FFmpeg()
+        .input(video_path)
+        .output(
+            "-",
+            af=f"silencedetect=noise={silence_threshold}dB:d={min_duration},ametadata=mode=print:file=silence_metadata.txt",
+            f="null",
+        )
+    )
+    await ffmpeg.execute()
+    return _parse_silence_metadata("silence_metadata.txt")
+
+
+def _parse_silence_metadata(filepath):
+    """
+    Parse ffmpeg's ametadata output to get silence intervals in seconds.
+    Returns list of (start, end) tuples (floats in seconds).
+    """
+    with open(filepath, "r") as f:
+        lines = f.readlines()
+
+    silences = []
+    current_start = None
+
+    for line in lines:
+        # Look for silence_start: value
+        start_match = re.search(r"silence_start=([\d.]+)", line)
+        if start_match:
+            current_start = float(start_match.group(1))
+        # Look for silence_end: value (which comes after the start)
+        end_match = re.search(r"silence_end=([\d.]+)", line)
+        if end_match and current_start is not None:
+            end = float(end_match.group(1))
+            silences.append((current_start, end))
+            current_start = None
+
+    return silences
+
+
+async def compose_video(video_path: str, output_path: str, *filters) -> FFmpeg:
     """
     High level video composition function
 
     Returns:
-        complex_filter value to pass in ffmpeg
-        output_stream to pass in ffmpeg
+        ffmpeg instance which can be further modified
     """
-    if texts is None:
-        texts = []
-    if images is None:
-        images = []
-    filters_seq = list(chain(images, texts))
+    ffmpeg = FFmpeg().input(video_path)
+    trims_cnt = 0
+    cuts_cnt = 0
+
+    filters_seq = list(chain(filters))
     # To start filter chain the first one must use video as base
     filters_seq[0].base_stream = "[0:v]"
+
+    for filter in filters:
+        if isinstance(filter, VideoImage):
+            ffmpeg = ffmpeg.input(filter.path)
+        if isinstance(filter, VideoTrim):
+            trims_cnt += 1
+        if isinstance(filter, VideoCut) and cuts_cnt == 0:
+            filter.base_audio_stream = "[0:a]"
+            cuts_cnt += 1
+    
     filter_complex = f"{';'.join(map(str, filters_seq))}"
-    output_stream = "[overlayed]"
-    return (filter_complex, output_stream)
+
+    if trims_cnt >= 2:
+        LOGGER.warning(
+            f"You passed more than one video trim, this can lead to undefined behaviour."
+        )
+    if cuts_cnt == 0:
+        ffmpeg = ffmpeg.output(
+            output_path, acodec="copy", filter_complex=filter_complex, map=["[overlayed]", "0:a"],
+        )
+    else:
+        ffmpeg = ffmpeg.output(
+            output_path, acodec="aac", filter_complex=filter_complex, map=["[overlayed]", "[overaudio]"],
+        )
+
+    return ffmpeg
 
 
 async def main():
-    video = "input.mp4"
+    video = "whisper_test.mp4"
     if Path("o.mp4").exists():
         Path("o.mp4").unlink()
 
     overlays = [
+        VideoCut("11s", "19s"),
         VideoImage(
+            "sig2.png",
             "1",
             ImageLocations.UPPER_RIGHT,
             linked_text=VideoText(
@@ -182,32 +283,23 @@ async def main():
             ),
         ),
         VideoImage(
+            "p1.jpg",
             "1",
             ImageLocations.BOTTOM_LEFT,
             340,
-            linked_text=VideoText("0:1", "Это экспи!", TextLocations.HORIZONTAL_LEFT),
+            linked_text=VideoText("0:0:1", "Это экспи!", TextLocations.HORIZONTAL_LEFT),
         ),
-    ]
-    texts = [
-        VideoText("1", "Я МОГУ ВСЕ!!!", TextLocations.BOTTOM_RIGHT),
-        VideoText("2", "Действительно...", TextLocations.UPPER_LEFT),
+        VideoText("1s", "Я МОГУ ВСЕ!!!", TextLocations.BOTTOM_RIGHT),
+        VideoText("2s", "Действительно...", TextLocations.UPPER_LEFT),
     ]
 
-    filter_complex, result_stream = await asyncio.create_task(
-        compose_video(overlays, texts)
+    processed_video = await asyncio.create_task(
+        compose_video(video, "o.mp4", *overlays)
     )
-
-    ffmpeg = (
-        FFmpeg()
-        .input(video)
-        .input("sig2.png")
-        .input("p1.jpg")
-        .output(
-            "o.mp4", filter_complex=filter_complex, map=result_stream, acodec="copy"
-        )
-    )
-
-    await asyncio.create_task(ffmpeg.execute())
+    res = await asyncio.create_task(detect_silence_fragments(video))
+    print(res)
+    await asyncio.create_task(processed_video.execute())
+    
 
 
 if __name__ == "__main__":
