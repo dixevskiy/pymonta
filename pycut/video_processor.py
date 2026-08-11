@@ -128,7 +128,7 @@ class VideoImage:
         return base
 
 
-def compose_video(
+async def compose_video(
     images: list[VideoImage] | None = None, texts: list[VideoText] | None = None
 ) -> tuple[str, str]:
     """
@@ -178,7 +178,9 @@ async def main():
         VideoText(0, "Действительно...", TextLocations.UPPER_LEFT),
     ]
 
-    filter_complex, result_stream = compose_video(overlays, texts)
+    filter_complex, result_stream = await asyncio.create_task(
+        compose_video(overlays, texts)
+    )
 
     ffmpeg = (
         FFmpeg()
