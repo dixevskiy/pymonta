@@ -35,9 +35,6 @@ import asyncio
 # For more information use docstrings from the lib.
 # help(pycut)
 
-
-version = 1 # Do not change it, it's for backwards compatibility.
-
 # You can look for this keyword with pycut.speech.find_keywords()
 keyword = "монтаж"
 
