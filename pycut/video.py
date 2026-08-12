@@ -156,26 +156,21 @@ class VideoImage:
 
 class VideoTrim:
     def __init__(
-        self, start_time: str, end_time: str, /, base_stream: str = "[overlayed]"
-    ):
-        self.start_time = _time_converter(start_time)
-        self.end_time = _time_converter(end_time)
-        self.base_stream = base_stream
-
-    def __str__(self):
-        return f"{self.base_stream}trim=start={self.start_time}:end={self.end_time},setpts=PTS-STARTPTS[overlayed]"
-
-
-class VideoCut:
-    def __init__(
         self, start_time: str, end_time: str, /, base_video_stream: str = "[overlayed]", base_audio_stream: str = "[overaudio]"
     ):
         self.start_time = _time_converter(start_time)
         self.end_time = _time_converter(end_time)
         self.base_stream = base_video_stream
         self.base_audio_stream = base_audio_stream
-        
 
+    def __str__(self):
+        return f"{self.base_stream}trim=start={self.start_time}:end={self.end_time},setpts=PTS-STARTPTS[overlayed];{self.base_audio_stream}atrim=start={self.start_time}:end={self.end_time},asetpts=PTS-STARTPTS[overaudio]"
+
+
+class VideoCut(VideoTrim):
+    def __init__(self, start_time: str, end_time: str, /, base_video_stream: str = "[overlayed]", base_audio_stream: str = "[overaudio]"):
+        super().__init__(start_time, end_time, base_video_stream, base_audio_stream)
+        
     def __str__(self):
         return f"{self.base_stream}select='not(between(t,{self.start_time},{self.end_time}))',setpts=N/FRAME_RATE/TB[overlayed];{self.base_audio_stream}aselect='not(between(t,{self.start_time},{self.end_time}))',asetpts=N/SR/TB[overaudio]"
 
@@ -222,16 +217,18 @@ def _parse_silence_metadata(filepath):
     return silences
 
 
-async def compose_video(video_path: str, output_path: str, *filters) -> FFmpeg:
+async def compose(video_path: str, output_path: str, *filters) -> FFmpeg:
     """
     High level video composition function
 
     Returns:
         ffmpeg instance which can be further modified
     """
+    if Path(output_path).exists():
+        raise RuntimeError("Output file already exists! Handle it manually. Halting video composing.")
     ffmpeg = FFmpeg().input(video_path)
     trims_cnt = 0
-    cuts_cnt = 0
+    reencode_audio = False
 
     filters_seq = list(chain(filters))
     # To start filter chain the first one must use video as base
@@ -241,18 +238,14 @@ async def compose_video(video_path: str, output_path: str, *filters) -> FFmpeg:
         if isinstance(filter, VideoImage):
             ffmpeg = ffmpeg.input(filter.path)
         if isinstance(filter, VideoTrim):
+            if trims_cnt == 0:
+                filter.base_audio_stream = "[0:a]"
+                reencode_audio = True
             trims_cnt += 1
-        if isinstance(filter, VideoCut) and cuts_cnt == 0:
-            filter.base_audio_stream = "[0:a]"
-            cuts_cnt += 1
     
     filter_complex = f"{';'.join(map(str, filters_seq))}"
 
-    if trims_cnt >= 2:
-        LOGGER.warning(
-            f"You passed more than one video trim, this can lead to undefined behaviour."
-        )
-    if cuts_cnt == 0:
+    if not reencode_audio:
         ffmpeg = ffmpeg.output(
             output_path, acodec="copy", filter_complex=filter_complex, map=["[overlayed]", "0:a"],
         )
@@ -264,43 +257,43 @@ async def compose_video(video_path: str, output_path: str, *filters) -> FFmpeg:
     return ffmpeg
 
 
-async def main():
-    video = "whisper_test.mp4"
-    if Path("o.mp4").exists():
-        Path("o.mp4").unlink()
+# async def main():
+#     video = "whisper_test.mp4"
+#     if Path("o.mp4").exists():
+#         Path("o.mp4").unlink()
 
-    overlays = [
-        VideoCut("11s", "19s"),
-        VideoImage(
-            "sig2.png",
-            "1",
-            ImageLocations.UPPER_RIGHT,
-            linked_text=VideoText(
-                "1",
-                "Это АРА!\nПрикольни реплика <3",
-                TextLocations.HORIZONTAL_RIGHT,
-                font_color="556B2F",
-            ),
-        ),
-        VideoImage(
-            "p1.jpg",
-            "1",
-            ImageLocations.BOTTOM_LEFT,
-            340,
-            linked_text=VideoText("0:0:1", "Это экспи!", TextLocations.HORIZONTAL_LEFT),
-        ),
-        VideoText("1s", "Я МОГУ ВСЕ!!!", TextLocations.BOTTOM_RIGHT),
-        VideoText("2s", "Действительно...", TextLocations.UPPER_LEFT),
-    ]
+#     overlays = [
+#         VideoTrim("11s", "19s"),
+#         VideoImage(
+#             "sig2.png",
+#             "1",
+#             ImageLocations.UPPER_RIGHT,
+#             linked_text=VideoText(
+#                 "1",
+#                 "Это АРА!\nПрикольни реплика <3",
+#                 TextLocations.HORIZONTAL_RIGHT,
+#                 font_color="556B2F",
+#             ),
+#         ),
+#         VideoImage(
+#             "p1.jpg",
+#             "1",
+#             ImageLocations.BOTTOM_LEFT,
+#             340,
+#             linked_text=VideoText("0:0:1", "Это экспи!", TextLocations.HORIZONTAL_LEFT),
+#         ),
+#         VideoText("1s", "Я МОГУ ВСЕ!!!", TextLocations.BOTTOM_RIGHT),
+#         VideoText("2s", "Действительно...", TextLocations.UPPER_LEFT),
+#     ]
 
-    processed_video = await asyncio.create_task(
-        compose_video(video, "o.mp4", *overlays)
-    )
-    res = await asyncio.create_task(detect_silence_fragments(video))
-    print(res)
-    await asyncio.create_task(processed_video.execute())
+#     processed_video = await asyncio.create_task(
+#         compose_video(video, "o.mp4", *overlays)
+#     )
+#     res = await asyncio.create_task(detect_silence_fragments(video))
+#     print(res)
+#     await asyncio.create_task(processed_video.execute())
     
 
 
-if __name__ == "__main__":
-    asyncio.run(main(), debug=True)
+# if __name__ == "__main__":
+#     asyncio.run(main(), debug=True)
