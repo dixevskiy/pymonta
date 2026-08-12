@@ -1,10 +1,9 @@
-import asyncio
 import logging
 import math
+import re
 from enum import Enum
 from itertools import chain, count
 from pathlib import Path
-import re
 
 from ffmpeg.asyncio import FFmpeg
 
@@ -156,7 +155,12 @@ class VideoImage:
 
 class VideoTrim:
     def __init__(
-        self, start_time: str, end_time: str, /, base_video_stream: str = "[overlayed]", base_audio_stream: str = "[overaudio]"
+        self,
+        start_time: str,
+        end_time: str,
+        /,
+        base_video_stream: str = "[overlayed]",
+        base_audio_stream: str = "[overaudio]",
     ):
         self.start_time = _time_converter(start_time)
         self.end_time = _time_converter(end_time)
@@ -168,9 +172,16 @@ class VideoTrim:
 
 
 class VideoCut(VideoTrim):
-    def __init__(self, start_time: str, end_time: str, /, base_video_stream: str = "[overlayed]", base_audio_stream: str = "[overaudio]"):
+    def __init__(
+        self,
+        start_time: str,
+        end_time: str,
+        /,
+        base_video_stream: str = "[overlayed]",
+        base_audio_stream: str = "[overaudio]",
+    ):
         super().__init__(start_time, end_time, base_video_stream, base_audio_stream)
-        
+
     def __str__(self):
         return f"{self.base_stream}select='not(between(t,{self.start_time},{self.end_time}))',setpts=N/FRAME_RATE/TB[overlayed];{self.base_audio_stream}aselect='not(between(t,{self.start_time},{self.end_time}))',asetpts=N/SR/TB[overaudio]"
 
@@ -225,7 +236,9 @@ async def compose(video_path: str, output_path: str, *filters) -> FFmpeg:
         ffmpeg instance which can be further modified
     """
     if Path(output_path).exists():
-        raise RuntimeError("Output file already exists! Handle it manually. Halting video composing.")
+        raise RuntimeError(
+            "Output file already exists! Handle it manually. Halting video composing."
+        )
     ffmpeg = FFmpeg().input(video_path)
     trims_cnt = 0
     reencode_audio = False
@@ -242,16 +255,22 @@ async def compose(video_path: str, output_path: str, *filters) -> FFmpeg:
                 filter.base_audio_stream = "[0:a]"
                 reencode_audio = True
             trims_cnt += 1
-    
+
     filter_complex = f"{';'.join(map(str, filters_seq))}"
 
     if not reencode_audio:
         ffmpeg = ffmpeg.output(
-            output_path, acodec="copy", filter_complex=filter_complex, map=["[overlayed]", "0:a"],
+            output_path,
+            acodec="copy",
+            filter_complex=filter_complex,
+            map=["[overlayed]", "0:a"],
         )
     else:
         ffmpeg = ffmpeg.output(
-            output_path, acodec="aac", filter_complex=filter_complex, map=["[overlayed]", "[overaudio]"],
+            output_path,
+            acodec="aac",
+            filter_complex=filter_complex,
+            map=["[overlayed]", "[overaudio]"],
         )
 
     return ffmpeg
@@ -292,7 +311,6 @@ async def compose(video_path: str, output_path: str, *filters) -> FFmpeg:
 #     res = await asyncio.create_task(detect_silence_fragments(video))
 #     print(res)
 #     await asyncio.create_task(processed_video.execute())
-    
 
 
 # if __name__ == "__main__":
