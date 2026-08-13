@@ -98,7 +98,8 @@ async def compose(
     aout = Pipe("aout")
     # flags
     audio_changed = False
-    for filter in chain(video_filters, audio_filters):
+    video_changed = False
+    for filter in chain(reversed(video_filters), reversed(audio_filters)):
         if isinstance(filter, Media):
             ffmpeg.input(filter.path)
         if filter.stream_type == "audio":
@@ -106,19 +107,21 @@ async def compose(
             audio_changed = True
         if filter.stream_type == "video":
             vout = vout.join(Pipe("0:v", filter))
+            video_changed = True
 
     filter_complex = f"{vout.combine_filter()}{aout.combine_filter()}"
 
     acodec = "aac" if audio_changed else "copy"
     astream = "[aout]" if audio_changed else "0:a"
+    vstream = "[vout]" if video_changed else "0:v"
 
-    LOGGER.debug(filter_complex)
+    LOGGER.debug(f"filter: {filter_complex}\n- video_output:{vstream}\n- audio_output:{astream}, audio_codec:{acodec}")
 
     ffmpeg = ffmpeg.output(
         output_path,
         acodec=acodec,
         filter_complex=filter_complex,
-        map=["[vout]", astream],
+        map=[vstream, astream],
     )
 
     @ffmpeg.on("progress")

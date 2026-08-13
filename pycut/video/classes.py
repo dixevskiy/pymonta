@@ -380,3 +380,25 @@ class InsertAudio(NewAudio):
         return Template(
             f"[{self.stream_id}:a]atrim=0:{self.end_time},adelay={self.start_time * 1000}:all=1,volume={self.volume}[{self.stream_id}_inserted];[$input][{self.stream_id}_inserted]amix=inputs=2:duration=first[$output];"
         )
+
+class RemoveAudio(Filter):
+
+    def apply(self) -> Template:
+        return Template(
+            f"[$input]volume=0[$output];"
+        )
+
+    @property
+    def stream_type(self) -> str:
+        return "audio"
+
+class MuteRange(Filter):
+    
+    def __init__(self, start_time: str, end_time: str) -> None:
+        self.start_time = _time_converter(start_time)
+        self.end_time = _time_converter(end_time)
+
+    def apply(self) -> Template:
+        return Template(
+            f"[$input]volume=enable='between(t,{self.start_time},{self.end_time})':volume=0[$output];"
+        )
