@@ -1,15 +1,8 @@
-import logging
 import math
-import re
 from abc import ABC, abstractmethod
 from enum import Enum
 from itertools import count
-from pathlib import Path
 from string import Template
-
-from ffmpeg.asyncio import FFmpeg
-
-LOGGER = logging.getLogger(__name__)
 
 
 class TextLocations(Enum):
@@ -20,6 +13,8 @@ class TextLocations(Enum):
     UPPER_LEFT = "x=(w-tw)/2-(w-tw)/3:y=(h-th)/2-(h-th)/3"
     HORIZONTAL_RIGHT = "x=(w-tw)/2+(w-tw)/3:y=(h-th)/2"
     HORIZONTAL_LEFT = "x=(w-tw)/2-(w-tw)/3:y=(h-th)/2"
+    HORIZONTAL_UP = "x=(w-tw)/2:y=(h-th)/2-(h-th)/3"
+    HORIZONTAL_DOWN = "x=(w-tw)/2:y=(h-th)/2+(h-th)/3"
 
 
 class ImageLocations(Enum):
@@ -27,12 +22,14 @@ class ImageLocations(Enum):
     BOTTOM_RIGHT = "x=(W-w)/2+(W-w)/2.5:y=(H-h)/2+(H-h)/3"
     BOTTOM_LEFT = "x=(W-w)/2-(W-w)/2.5:y=(H-h)/2+(H-h)/3"
     UPPER_RIGHT = "x=(W-w)/2+(W-w)/2.5:y=(H-h)/2-(H-h)/3"
-    UPPER_LEFT = "x=(W-tw)/2-(W-w)/2.5:y=(H-h)/2-(H-h)/3"
+    UPPER_LEFT = "x=(W-w)/2-(W-w)/2.5:y=(H-h)/2-(H-h)/3"
+    HORIZONTAL_RIGHT = "x=(W-w)/2+(W-w)/3:y=(H-h)/2"
+    HORIZONTAL_LEFT = "x=(W-w)/2-(W-w)/3:y=(H-h)/2"
+    HORIZONTAL_UP = "x=(W-w)/2:y=(H-h)/2-(H-h)/3"
+    HORIZONTAL_DOWN = "x=(W-w)/2:y=(H-h)/2+(H-h)/3"
 
 
 class Pipe:
-    media_type: str = "generic"
-
     def __init__(
         self,
         stream_name: str,
@@ -67,10 +64,9 @@ class Pipe:
         res = ""
         if self.filter:
             # Build placeholder names like "video_input", "audio_output"
-            prefix = self.media_type
             placeholders = {
-                f"{prefix}_input": self.input,
-                f"{prefix}_output": self.output,
+                "input": self.input,
+                "output": self.output,
             }
             res = self.filter.apply().safe_substitute(**placeholders)
         if self._output_pipe:
@@ -90,17 +86,6 @@ class Pipe:
             self.stream_name = new_stream_name
 
 
-class VideoPipe(Pipe):
-    media_type = "video"
-    # You can enforce filter type here if desired:
-    # def __init__(self, *args, filter: VideoFilter = None, **kwargs):
-    #     super().__init__(*args, filter=filter, **kwargs)
-
-
-class AudioPipe(Pipe):
-    media_type = "audio"
-
-
 class Media(ABC):
     @property
     @abstractmethod
@@ -111,6 +96,11 @@ class Media(ABC):
 class Filter(ABC):
     @abstractmethod
     def apply(self) -> Template:
+        pass
+
+    @property
+    @abstractmethod
+    def stream_type(self) -> str:
         pass
 
 
@@ -189,14 +179,22 @@ class VideoText(Filter):
                 wrapped_string_build.append(word)
             self.text = " ".join(wrapped_string_build)
 
+    @property
+    def stream_type(self) -> str:
+        return "video"
+
     def apply(self) -> Template:
         return Template(
-            f"[$video_input]drawtext=enable='between(t,{self.start_time},{self.end_time})':text='{self.text}':fontcolor={self.font_color}:text_align={self.text_align}:fontsize={self.size}:{self.location.value}[$video_output];"
+            f"[$input]drawtext=enable='between(t,{self.start_time},{self.end_time})':text='{self.text}':fontcolor={self.font_color}:text_align={self.text_align}:fontsize={self.size}:{self.location.value}[$output];"
         )
 
 
 class VideoImage(Filter, Media):
     _id = count(1)
+
+    @property
+    def stream_type(self) -> str:
+        return "video"
 
     def __init__(
         self,
@@ -229,11 +227,15 @@ class VideoImage(Filter, Media):
 
     def apply(self) -> Template:
         return Template(
-            f"[{self.image_index}:v]scale={self.size}:-1[img];[$video_input][img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})'[$video_output];"
+            f"[{self.image_index}:v]scale={self.size}:-1[img];[$input][img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})'[$output];"
         )
 
 
 class _VideoTrim(Filter):
+    @property
+    def stream_type(self) -> str:
+        return "video"
+
     def __init__(
         self,
         start_time: int,
@@ -244,11 +246,15 @@ class _VideoTrim(Filter):
 
     def apply(self):
         return Template(
-            f"[$video_input]trim=start={self.start_time}:end={self.end_time},setpts=PTS-STARTPTS[$video_output];"
+            f"[$input]trim=start={self.start_time}:end={self.end_time},setpts=PTS-STARTPTS[$output];"
         )
 
 
 class _AudioTrim(Filter):
+    @property
+    def stream_type(self) -> str:
+        return "audio"
+
     def __init__(
         self,
         start_time: int,
@@ -259,11 +265,15 @@ class _AudioTrim(Filter):
 
     def apply(self) -> Template:
         return Template(
-            f"[$audio_input]atrim=start={self.start_time}:end={self.end_time},asetpts=PTS-STARTPTS[$audio_output];"
+            f"[$input]atrim=start={self.start_time}:end={self.end_time},asetpts=PTS-STARTPTS[$output];"
         )
 
 
 class _VideoCut(Filter):
+    @property
+    def stream_type(self) -> str:
+        return "video"
+
     def __init__(
         self,
         start_time: int,
@@ -274,115 +284,26 @@ class _VideoCut(Filter):
 
     def apply(self) -> Template:
         return Template(
-            f"[$video_input]select='not(between(t,{self.start_time},{self.end_time}))',setpts=N/FRAME_RATE/TB[$video_output];"
+            f"[$input]select='not(between(t,{self.start_time},{self.end_time}))',setpts=N/FRAME_RATE/TB[$output];"
         )
 
 
 class _AudioCut(Filter):
+    @property
+    def stream_type(self) -> str:
+        return "audio"
+
     def __init__(self, start_time: int, end_time: int):
         self.start_time = start_time
         self.end_time = end_time
 
     def apply(self) -> Template:
         return Template(
-            f"[$audio_input]aselect='not(between(t,{self.start_time},{self.end_time}))',asetpts=N/SR/TB[$audio_output];"
+            f"[$input]aselect='not(between(t,{self.start_time},{self.end_time}))',asetpts=N/SR/TB[$output];"
         )
 
+class Cut:
 
-async def detect_silence_fragments(
-    video_path: str, silence_threshold=-40, min_duration=5
-):
-    ffmpeg = (
-        FFmpeg()
-        .input(video_path)
-        .output(
-            "-",
-            af=f"silencedetect=noise={silence_threshold}dB:d={min_duration},ametadata=mode=print:file=silence_metadata.txt",
-            f="null",
-        )
-    )
-    await ffmpeg.execute()
-    return _parse_silence_metadata("silence_metadata.txt")
-
-
-def _parse_silence_metadata(filepath):
-    """
-    Parse ffmpeg's ametadata output to get silence intervals in seconds.
-    Returns list of (start, end) tuples (floats in seconds).
-    """
-    with open(filepath, "r") as f:
-        lines = f.readlines()
-
-    silences = []
-    current_start = None
-
-    for line in lines:
-        # Look for silence_start: value
-        start_match = re.search(r"silence_start=([\d.]+)", line)
-        if start_match:
-            current_start = float(start_match.group(1))
-        # Look for silence_end: value (which comes after the start)
-        end_match = re.search(r"silence_end=([\d.]+)", line)
-        if end_match and current_start is not None:
-            end = float(end_match.group(1))
-            silences.append((current_start, end))
-            current_start = None
-
-    return silences
-
-
-async def compose(
-    video_path: str, output_path: str, video_filters, audio_filters
-) -> FFmpeg:
-    """
-    High level video composition function
-
-    Returns:
-        ffmpeg instance which can be further modified
-    """
-    if Path(output_path).exists():
-        raise RuntimeError(
-            "Output file already exists! Handle it manually. Halting video composing."
-        )
-    ffmpeg = FFmpeg().input(video_path)
-    vout = VideoPipe("vout")
-    aout = AudioPipe("aout")
-    for filter in video_filters:
-        if isinstance(filter, Media):
-            ffmpeg.input(filter.path)
-    for filter in video_filters:
-        vout = vout.join(VideoPipe("0:v", filter))
-    for filter in audio_filters:
-        aout = aout.join(AudioPipe("0:a", filter))
-
-    filter_complex = "".join([vout.combine_filter(), aout.combine_filter()])
-    ffmpeg = ffmpeg.output(
-        output_path,
-        acodec="aac",
-        filter_complex=filter_complex,
-        map=["[vout]", "[aout]"],
-    )
-
-    return ffmpeg
-
-
-import asyncio
-
-
-async def main():
-    video = "whisper_test.mp4"
-    if Path("o.mp4").exists():
-        Path("o.mp4").unlink()
-
-    video_edit = [
-        _VideoTrim(1, 5),
-        VideoText("1s", "Hi!", TextLocations.BOTTOM_LEFT),
-        VideoImage("sig2.png", "1s", ImageLocations.BOTTOM_LEFT)
-    ]
-    audio_edit = [_AudioTrim(1, 5)]
-    bake = await compose("whisper_test.mp4", "o.mp4", video_edit, audio_edit)
-    await bake.execute()
-
-
-if __name__ == "__main__":
-    asyncio.run(main(), debug=True)
+    def __new__(cls, start_time: str, end_time: str) -> tuple[_AudioCut, _VideoCut]:
+        s, e = _time_converter(start_time), _time_converter(end_time)
+        return (_AudioCut(s, e), _VideoCut(s, e))
