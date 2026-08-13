@@ -4,6 +4,8 @@ from enum import Enum
 from itertools import count
 from string import Template
 
+_ids = count(1)
+
 
 class TextLocations(Enum):
     CENTER = "x=(w-tw)/2:y=(h-th)/2"
@@ -190,8 +192,6 @@ class VideoText(Filter):
 
 
 class VideoImage(Filter, Media):
-    _id = count(1)
-
     @property
     def stream_type(self) -> str:
         return "video"
@@ -219,7 +219,7 @@ class VideoImage(Filter, Media):
         self.linked_text = None
 
         # total count of VideoImage instances
-        self.image_index = next(self._id)
+        self.image_index = next(_ids)
 
     @property
     def path(self) -> str:
@@ -302,8 +302,81 @@ class _AudioCut(Filter):
             f"[$input]aselect='not(between(t,{self.start_time},{self.end_time}))',asetpts=N/SR/TB[$output];"
         )
 
-class Cut:
 
+class Cut:
     def __new__(cls, start_time: str, end_time: str) -> tuple[_AudioCut, _VideoCut]:
         s, e = _time_converter(start_time), _time_converter(end_time)
         return (_AudioCut(s, e), _VideoCut(s, e))
+
+
+class Trim:
+    def __new__(cls, start_time: str, end_time: str) -> tuple[_AudioTrim, _VideoTrim]:
+        s, e = _time_converter(start_time), _time_converter(end_time)
+        return (_AudioTrim(s, e), _VideoTrim(s, e))
+
+
+class ChangeVolume(Filter):
+    def __init__(self, volume: float):
+        self.volume = volume
+
+    @property
+    def stream_type(self) -> str:
+        return "audio"
+
+    def apply(self) -> Template:
+        return Template(f"[$input]volume={self.volume}[$output];")
+
+
+class VideoAdjustments(Filter):
+    def __init__(
+        self,
+        brightness: float | None = None,
+        gamma: float | None = None,
+        contrast: float | None = None,
+        saturation: float | None = None,
+    ) -> None:
+        self.b = str(brightness) if brightness else "0"
+        self.g = str(gamma) if gamma else "1"
+        self.c = str(contrast) if contrast else "1"
+        self.s = str(saturation) if saturation else "1"
+
+    def apply(self) -> Template:
+        return Template(
+            f"[$input]eq=brightness={self.b}:contrast={self.c}:gamma={self.g}:saturation={self.s}[$output];"
+        )
+
+    @property
+    def stream_type(self) -> str:
+        return "video"
+
+
+class NewAudio(Media, Filter):
+    def __init__(self, audio_path: str, volume: float):
+        self.audio_path = audio_path
+        self.volume = volume
+        self.stream_id = next(_ids)
+
+    def apply(self) -> Template:
+        return Template(
+            f"[{self.stream_id}:a]volume={self.volume}[{self.stream_id}_edit];[$input][{self.stream_id}_edit]amix=inputs=2:duration=first[$output];"
+        )
+
+    @property
+    def path(self) -> str:
+        return self.audio_path
+
+    @property
+    def stream_type(self) -> str:
+        return "audio"
+
+
+class InsertAudio(NewAudio):
+    def __init__(self, audio_path: str, volume: float, start_time: str, end_time: str):
+        super().__init__(audio_path, volume)
+        self.start_time = _time_converter(start_time)
+        self.end_time = _time_converter(end_time)
+
+    def apply(self) -> Template:
+        return Template(
+            f"[{self.stream_id}:a]atrim=0:{self.end_time},adelay={self.start_time * 1000}:all=1,volume={self.volume}[{self.stream_id}_inserted];[$input][{self.stream_id}_inserted]amix=inputs=2:duration=first[$output];"
+        )

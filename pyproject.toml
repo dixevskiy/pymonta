@@ -1,13 +1,19 @@
 [project]
 name = "pycut"
 version = "1.0.0"
-description = "Add your description here"
+description = "Video editing library for nerds"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "opencv-python>=5.0.0.93",
     "python-ffmpeg>=2.0.12",
     "whisper-timestamped>=1.15.9",
 ]
+
+[project.urls]
+"Homepage" = "https://codeberg.org/dixevskiy/pycut"
+"Bug Tracker" = "https://codeberg.org/dixevskiy/pycut/issues"
+
 
 [dependency-groups]
 dev = [

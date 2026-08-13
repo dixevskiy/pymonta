@@ -1,18 +1,25 @@
 import logging
 import re
+import sys
+from collections.abc import Sequence
+from itertools import chain
 from pathlib import Path
 
+import cv2
 from ffmpeg.asyncio import FFmpeg
+from ffmpeg.errors import FFmpegError
+from ffmpeg.progress import Progress
 
 from pycut.video.classes import (
+    ChangeVolume,
     Filter,
     ImageLocations,
     Media,
     Pipe,
     TextLocations,
+    Trim,
     VideoImage,
     VideoText,
-    Cut
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -28,6 +35,7 @@ async def detect_silence_fragments(
             "-",
             af=f"silencedetect=noise={silence_threshold}dB:d={min_duration},ametadata=mode=print:file=silence_metadata.txt",
             f="null",
+            vn=None,
         )
     )
     await ffmpeg.execute()
@@ -60,7 +68,19 @@ def _parse_silence_metadata(filepath):
     return silences
 
 
-async def compose(video_path: str, output_path: str, *filters: Filter) -> FFmpeg:
+async def get_duration(video_path: str) -> int:
+    v = cv2.VideoCapture(video_path)
+    frames = v.get(cv2.CAP_PROP_FRAME_COUNT)
+    fps = v.get(cv2.CAP_PROP_FPS)
+    return round(frames / fps)
+
+
+async def compose(
+    video_path: str,
+    output_path: str,
+    video_filters: Sequence[Filter],
+    audio_filters: Sequence[Filter],
+) -> None:
     """
     High level video composition function
 
@@ -71,13 +91,14 @@ async def compose(video_path: str, output_path: str, *filters: Filter) -> FFmpeg
         raise RuntimeError(
             "Output file already exists! Handle it manually. Halting video composing."
         )
+    LOGGER.info(f"Starting composition process for {video_path}.")
     ffmpeg = FFmpeg().input(video_path)
     # pipelines
     vout = Pipe("vout")
     aout = Pipe("aout")
     # flags
     audio_changed = False
-    for filter in filters:
+    for filter in chain(video_filters, audio_filters):
         if isinstance(filter, Media):
             ffmpeg.input(filter.path)
         if filter.stream_type == "audio":
@@ -86,12 +107,12 @@ async def compose(video_path: str, output_path: str, *filters: Filter) -> FFmpeg
         if filter.stream_type == "video":
             vout = vout.join(Pipe("0:v", filter))
 
-    filter_complex = "".join([vout.combine_filter(), aout.combine_filter()])
+    filter_complex = f"{vout.combine_filter()}{aout.combine_filter()}"
 
     acodec = "aac" if audio_changed else "copy"
     astream = "[aout]" if audio_changed else "0:a"
 
-    print(filter_complex)
+    LOGGER.debug(filter_complex)
 
     ffmpeg = ffmpeg.output(
         output_path,
@@ -100,27 +121,16 @@ async def compose(video_path: str, output_path: str, *filters: Filter) -> FFmpeg
         map=["[vout]", astream],
     )
 
-    return ffmpeg
+    @ffmpeg.on("progress")
+    def on_progress(progress: Progress):
+        LOGGER.info(
+            f"Working on {progress.frame} frame, current fps = {progress.fps}, output size: ~{progress.size / 1024 / 1024}MB"
+        )
 
-
-import asyncio
-
-
-async def main():
-    video = "whisper_test.mp4"
-    if Path("o.mp4").exists():
-        Path("o.mp4").unlink()
-
-    edits = [
-        # _VideoTrim(1, 5),
-        *Cut("11s", "19s"),
-        VideoText("1s", "Hi!", TextLocations.HORIZONTAL_UP),
-        VideoImage("sig2.png", "1s", ImageLocations.HORIZONTAL_DOWN),
-        # _AudioTrim(1, 5),
-    ]
-    bake = await compose(video, "o.mp4", *edits)
-    await bake.execute()
-
-
-if __name__ == "__main__":
-    asyncio.run(main(), debug=True)
+    try:
+        await ffmpeg.execute()
+    except FFmpegError as e:
+        LOGGER.critical(
+            f"OOOPS! You found a nasty bug in pycut! Please share your filter pipeline in issue and an exception!\n{e}"
+        )
+        raise e
