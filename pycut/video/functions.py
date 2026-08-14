@@ -165,9 +165,10 @@ def compose(
     # flags
     audio_changed = False
     video_changed = False
-    for filter in chain(reversed(video_filters), reversed(audio_filters)):
+    for filter in chain(video_filters, audio_filters):
         if isinstance(filter, Media):
             ffmpeg.input(filter.path)
+    for filter in chain(reversed(video_filters), reversed(audio_filters)):
         if filter.stream_type == "audio":
             aout = aout.join(Pipe("0:a", filter))
             audio_changed = True

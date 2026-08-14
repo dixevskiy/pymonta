@@ -405,6 +405,22 @@ class MuteRange(Filter):
             f"[$input]volume=enable='between(t,{self.start_time},{self.end_time})':volume=0[$output];"
         )
 
+    @property
+    def stream_type(self) -> str:
+        return "audio"
+
+
+class HardSubtitles(Filter):
+    def __init__(self, subtitles_path: str) -> None:
+        self.subtitles = subtitles_path
+
+    def apply(self) -> Template:
+        return Template(f"[$input]subtitles={self.subtitles}[$output];")
+
+    @property
+    def stream_type(self) -> str:
+        return "video"
+
 
 class _MixVideoStreams(Filter):
     def __init__(self, streams: list[str]) -> None:
