@@ -6,10 +6,13 @@ DEFAULT_SCRIPT = """
 # Let me create some basic stuff for you...
 
 import logging
+import sys
+import asyncio
+
 from pycut.video.classes import *
 from pycut.video.functions import *
 from pycut.jsons import *
-import asyncio
+from pycut.speech import *
 
 # For information use docstrings from the lib.
 # help(pycut)

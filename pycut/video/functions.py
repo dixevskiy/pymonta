@@ -68,76 +68,63 @@ async def get_duration(video_path: str) -> int:
     fps = v.get(cv2.CAP_PROP_FPS)
     return round(frames / fps)
 
+## Scheduled on rewriting
+# def compose_piped(
+#     video_path: str,
+#     output_path: str,
+#     video_pipes: Sequence[Pipe],
+#     audio_pipes: Sequence[Pipe],
+#     **ffmpeg_output_args,
+# ) -> FFmpeg:
 
-def compose_piped(
-    video_path: str,
-    output_path: str,
-    video_pipes: Sequence[Pipe],
-    audio_pipes: Sequence[Pipe] | None = None,
-    **ffmpeg_output_args,
-) -> FFmpeg:
+#     LOGGER.info(f"Starting piped composition process for {video_path}.")
 
-    LOGGER.info(f"Starting piped composition process for {video_path}.")
+#     if Path(output_path).exists():
+#         raise RuntimeError(
+#             "Output file already exists! Handle it manually. Halting video composing."
+#         )
 
-    if Path(output_path).exists():
-        raise RuntimeError(
-            "Output file already exists! Handle it manually. Halting video composing."
-        )
+#     ffmpeg = FFmpeg().input(video_path)
 
-    ffmpeg = FFmpeg().input(video_path)
+#     @ffmpeg.on("progress")
+#     def on_progress(progress: Progress):
+#         LOGGER.info(
+#             f"Working on {progress.frame} frame, current fps = {progress.fps}, output size: ~{progress.size / 1024 / 1024}MB"
+#         )
 
-    @ffmpeg.on("progress")
-    def on_progress(progress: Progress):
-        LOGGER.info(
-            f"Working on {progress.frame} frame, current fps = {progress.fps}, output size: ~{progress.size / 1024 / 1024}MB"
-        )
+#     for pipe in chain(video_pipes, audio_pipes):
+#         for path in pipe.get_all_media_paths():
+#             ffmpeg.input(path)
 
-    for pipe in video_pipes:
-        if isinstance(pipe.filter, Media):
-            ffmpeg.input(pipe.filter.path)
+#     output_video_streams = [pipe.output for pipe in video_pipes]
+#     last_stream_name = video_pipes[$outpu-2t].stream_name
+#     vout = Pipe("vout").join(
+#         Pipe(last_stream_name, _MixVideoStreams(output_video_streams))
+#     )
+#     video_filters = (
+#         "".join([pipe.combine_filter() for pipe in video_pipes]) + vout.combine_filter()
+#     )
 
-    output_video_streams = [pipe.output for pipe in video_pipes]
-    last_stream_name = video_pipes[-1].stream_name
-    vout = Pipe("vout").join(
-        Pipe(last_stream_name, _MixVideoStreams(output_video_streams))
-    )
-    video_filters = (
-        "".join([pipe.combine_filter() for pipe in video_pipes]) + vout.combine_filter()
-    )
+#     output_audio_streams = [pipe.output for pipe in audio_pipes]
+#     aout = Pipe("aout").join(Pipe("", _MixAudioStreams(output_audio_streams)))
+#     audio_filters = (
+#         "".join([pipe.combine_filter() for pipe in audio_pipes]) + aout.combine_filter()
+#     )
 
-    if not audio_pipes:
-        LOGGER.debug(
-            f"Recieved: {len(video_pipes)} video pipes.\nComposed to {video_filters}. \nStream name for glueing used: {last_stream_name}. \nCustom ffmpeg args is: {ffmpeg_output_args}"
-        )
-        ffmpeg = ffmpeg.output(
-            output_path,
-            acodec="copy",
-            filter_complex=video_filters,
-            map=["[vout]", "0:a"],
-            **ffmpeg_output_args,
-        )
-        return ffmpeg
+#     filters = video_filters + audio_filters
+    
+#     LOGGER.debug(
+#         f"Recieved: {len(video_pipes)} video pipes and {len(audio_pipes)} audio pipes.\nComposed to {filters}. \nStream name for glueing used: {last_stream_name}\n Custom ffmpeg args is: {ffmpeg_output_args}"
+#     )
 
-    output_audio_streams = [pipe.output for pipe in audio_pipes]
-    aout = Pipe("aout").join(Pipe("", _MixAudioStreams(output_audio_streams)))
-    audio_filters = (
-        "".join([pipe.combine_filter() for pipe in audio_pipes]) + aout.combine_filter()
-    )
-
-    filters = video_filters + audio_filters
-
-    LOGGER.debug(
-        f"Recieved: {len(video_pipes)} video pipes and {len(audio_pipes)} audio pipes.\nComposed to {filter}. \nStream name for glueing used: {last_stream_name}\n Custom ffmpeg args is: {ffmpeg_output_args}"
-    )
-
-    ffmpeg = ffmpeg.output(
-        output_path,
-        acodec="aac",
-        filter_complex=filters,
-        map=["[vout]", "[aout]"],
-        **ffmpeg_output_args,
-    )
-    return ffmpeg
+#     ffmpeg = ffmpeg.output(
+#         output_path,
+#         acodec="aac",
+#         filter_complex=filters,
+#         map=["[vout]", "[aout]"],
+#         **ffmpeg_output_args,
+#     )
+#     return ffmpeg
 
 
 def compose(

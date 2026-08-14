@@ -80,12 +80,14 @@ class Pipe:
         pipe._output_pipe = self
         return pipe
 
-    def change_output_stream(self, new_stream_name) -> None:
+    def get_all_media_paths(self) -> list[str]:
+        res = []
+        if self.filter:
+            if isinstance(self.filter, Media):
+                res = [self.filter.path]
         if self._output_pipe:
-            self._output_pipe.stream_name = new_stream_name
-            self._output_pipe.change_output_stream(new_stream_name)
-        else:
-            self.stream_name = new_stream_name
+            res += self._output_pipe.get_all_media_paths()
+        return res
 
 
 class Media(ABC):
@@ -118,11 +120,6 @@ def _time_converter(human_time: str) -> int:
         hours, min, sec = human_time.replace("h", ":").replace("m", ":").split(":")
         return int(hours) * 3600 + int(min) * 60 + int(sec)
     return int(human_time)
-
-
-def _gen_alpha_layer() -> str:
-    return "[$input]scale=iw:ih,format=rgba,colorchannelmixer=aa=0[transparent];"
-
 
 class VideoText(Filter):
     def __init__(
@@ -184,6 +181,7 @@ class VideoText(Filter):
                 line_sum_symbols += len(word)
                 wrapped_string_build.append(word)
             self.text = " ".join(wrapped_string_build)
+        self.text = self.text.replace(":", r"\:")
 
     @property
     def stream_type(self) -> str:
@@ -191,7 +189,7 @@ class VideoText(Filter):
 
     def apply(self) -> Template:
         return Template(
-            f"{_gen_alpha_layer()}[transparent]drawtext=enable='between(t,{self.start_time},{self.end_time})':text='{self.text}':fontcolor={self.font_color}:text_align={self.text_align}:fontsize={self.size}:{self.location.value}[$output];"
+            f"[$input]drawtext=enable='between(t,{self.start_time},{self.end_time})':text='{self.text}':fontcolor={self.font_color}:text_align={self.text_align}:fontsize={self.size}:{self.location.value}[$output];"
         )
 
 
@@ -207,7 +205,7 @@ class VideoImage(Filter, Media):
         location: ImageLocations,
         size: int = 320,
         /,
-        end_time: int | None = None,
+        end_time: str | None = None,
     ) -> None:
         """
         Create instance of VideoImage
@@ -219,7 +217,7 @@ class VideoImage(Filter, Media):
         self.start_time = _time_converter(start_time)
         self.location = location.value
         self.size = size
-        self.end_time = self.start_time + 5 if not end_time else end_time
+        self.end_time = self.start_time + 5 if not end_time else _time_converter(end_time)
         self.linked_text = None
 
         # total count of VideoImage instances
@@ -231,7 +229,7 @@ class VideoImage(Filter, Media):
 
     def apply(self) -> Template:
         return Template(
-            f"{_gen_alpha_layer()}[{self.image_index}:v]scale={self.size}:-1[img];[transparent][img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})'[$output];"
+            f"[{self.image_index}:v]scale={self.size}:-2,format=rgba[img];[$input][img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})':alpha=premultiplied[$output];"
         )
 
 
@@ -457,6 +455,8 @@ class _MixAudioStreams(Filter):
         self.streams = streams
 
     def apply(self) -> Template:
+        if len(self.streams) == 1:
+            return Template(f"[{self.streams[0]}]anull[$output];")
         _streams_input = "".join([f"[{name}]" for name in self.streams])
         mix_template = Template(
             f"{_streams_input}amix=inputs={len(self.streams)}[$output];"
