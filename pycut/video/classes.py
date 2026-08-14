@@ -120,6 +120,10 @@ def _time_converter(human_time: str) -> int:
     return int(human_time)
 
 
+def _gen_alpha_layer() -> str:
+    return "[$input]scale=iw:ih,format=rgba,colorchannelmixer=aa=0[transparent];"
+
+
 class VideoText(Filter):
     def __init__(
         self,
@@ -187,7 +191,7 @@ class VideoText(Filter):
 
     def apply(self) -> Template:
         return Template(
-            f"[$input]drawtext=enable='between(t,{self.start_time},{self.end_time})':text='{self.text}':fontcolor={self.font_color}:text_align={self.text_align}:fontsize={self.size}:{self.location.value}[$output];"
+            f"{_gen_alpha_layer()}[transparent]drawtext=enable='between(t,{self.start_time},{self.end_time})':text='{self.text}':fontcolor={self.font_color}:text_align={self.text_align}:fontsize={self.size}:{self.location.value}[$output];"
         )
 
 
@@ -227,7 +231,7 @@ class VideoImage(Filter, Media):
 
     def apply(self) -> Template:
         return Template(
-            f"[{self.image_index}:v]scale={self.size}:-1[img];[$input][img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})'[$output];"
+            f"{_gen_alpha_layer()}[{self.image_index}:v]scale={self.size}:-1[img];[transparent][img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})'[$output];"
         )
 
 
@@ -381,19 +385,17 @@ class InsertAudio(NewAudio):
             f"[{self.stream_id}:a]atrim=0:{self.end_time},adelay={self.start_time * 1000}:all=1,volume={self.volume}[{self.stream_id}_inserted];[$input][{self.stream_id}_inserted]amix=inputs=2:duration=first[$output];"
         )
 
-class RemoveAudio(Filter):
 
+class RemoveAudio(Filter):
     def apply(self) -> Template:
-        return Template(
-            f"[$input]volume=0[$output];"
-        )
+        return Template("[$input]volume=0[$output];")
 
     @property
     def stream_type(self) -> str:
         return "audio"
 
+
 class MuteRange(Filter):
-    
     def __init__(self, start_time: str, end_time: str) -> None:
         self.start_time = _time_converter(start_time)
         self.end_time = _time_converter(end_time)
@@ -402,3 +404,49 @@ class MuteRange(Filter):
         return Template(
             f"[$input]volume=enable='between(t,{self.start_time},{self.end_time})':volume=0[$output];"
         )
+
+
+class _MixVideoStreams(Filter):
+    def __init__(self, streams: list[str]) -> None:
+        self.streams = streams
+
+    def apply(self) -> Template:
+        n = len(self.streams)
+
+        # If no overlay streams are provided, just pass the base through
+        if n == 0:
+            return Template("[$input]null[$output];")
+
+        filter_parts = []
+        current = "$input"  # The base canvas that your framework resolves
+
+        for i, stream in enumerate(self.streams):
+            next_label = f"ov{i}"
+
+            filter_parts.append(f"[{current}][{stream}]overlay[{next_label}];")
+            current = next_label
+
+        # Pass the final overlay result to $output
+        filter_parts.append(f"[{current}]null[$output];")
+
+        return Template("".join(filter_parts))
+
+    @property
+    def stream_type(self) -> str:
+        return "video"
+
+
+class _MixAudioStreams(Filter):
+    def __init__(self, streams: list[str]) -> None:
+        self.streams = streams
+
+    def apply(self) -> Template:
+        _streams_input = "".join([f"[{name}]" for name in self.streams])
+        mix_template = Template(
+            f"{_streams_input}amix=inputs={len(self.streams)}[$output];"
+        )
+        return mix_template
+
+    @property
+    def stream_type(self) -> str:
+        return "audio"

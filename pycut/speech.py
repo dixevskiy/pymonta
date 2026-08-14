@@ -1,17 +1,28 @@
 import logging
 from fnmatch import fnmatch
+from time import strftime
 
 import whisper_timestamped as whisper
 
 LOGGER = logging.getLogger(__name__)
 
 
-def transcribe_video(video_path: str, language: str, model_size="small"):
+def transcribe_file(file_path: str, language: str, model_size="small"):
     LOGGER.info("Starting video transcribing process... This can take a while.")
     model = whisper.load_model(model_size)
-    result = model.transcribe(video_path, language=language)
+    result = model.transcribe(file_path, language=language)
     LOGGER.info("Transcribing process finished!")
     return result["segments"]
+
+
+def generate_srt(transcription) -> str:
+    preprocess = []
+    for segment in transcription:
+        text = segment["text"]  # pyright: ignore[reportArgumentType]
+        srt_start = strftime("%H:%M:%S", segment["start"])
+        srt_end = strftime("%H:%M:%S", segment["start"])
+        preprocess.append(f"{len(preprocess) + 1}\n{srt_start} --> {srt_end}\n{text}\n")
+    return "\n".join(preprocess)
 
 
 def find_keywords(transcription, keyword: str) -> list[tuple[int, int]] | None:

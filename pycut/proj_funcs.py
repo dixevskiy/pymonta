@@ -8,6 +8,7 @@ DEFAULT_SCRIPT = """
 import logging
 from pycut.video.classes import *
 from pycut.video.functions import *
+from pycut.jsons import *
 import asyncio
 
 # For information use docstrings from the lib.
@@ -23,15 +24,17 @@ logging.basicConfig(
 keyword = "монтаж"
 
 video_edit = [
+    # Place filters related to video here
     *Trim("1s","10s")
 ]
 
 audio_edit = [
-    *Trim("1s","10s")
+    # Place filters related to audio here
 ]
 
 async def edit():
-    await compose("input.mp4", "output.mp4", video_edit, audio_edit)
+    baked = compose("input.mp4", "output.mp4", video_edit, audio_edit)
+    await baked.execute()
 
 asyncio.run(edit())
 """

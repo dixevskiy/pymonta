@@ -1,25 +1,19 @@
 import logging
 import re
-import sys
 from collections.abc import Sequence
 from itertools import chain
 from pathlib import Path
 
 import cv2
 from ffmpeg.asyncio import FFmpeg
-from ffmpeg.errors import FFmpegError
 from ffmpeg.progress import Progress
 
 from pycut.video.classes import (
-    ChangeVolume,
     Filter,
-    ImageLocations,
     Media,
     Pipe,
-    TextLocations,
-    Trim,
-    VideoImage,
-    VideoText,
+    _MixAudioStreams,
+    _MixVideoStreams,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -75,12 +69,84 @@ async def get_duration(video_path: str) -> int:
     return round(frames / fps)
 
 
-async def compose(
+def compose_piped(
+    video_path: str,
+    output_path: str,
+    video_pipes: Sequence[Pipe],
+    audio_pipes: Sequence[Pipe] | None = None,
+    **ffmpeg_output_args,
+) -> FFmpeg:
+
+    LOGGER.info(f"Starting piped composition process for {video_path}.")
+
+    if Path(output_path).exists():
+        raise RuntimeError(
+            "Output file already exists! Handle it manually. Halting video composing."
+        )
+
+    ffmpeg = FFmpeg().input(video_path)
+
+    @ffmpeg.on("progress")
+    def on_progress(progress: Progress):
+        LOGGER.info(
+            f"Working on {progress.frame} frame, current fps = {progress.fps}, output size: ~{progress.size / 1024 / 1024}MB"
+        )
+
+    for pipe in video_pipes:
+        if isinstance(pipe.filter, Media):
+            ffmpeg.input(pipe.filter.path)
+
+    output_video_streams = [pipe.output for pipe in video_pipes]
+    last_stream_name = video_pipes[-1].stream_name
+    vout = Pipe("vout").join(
+        Pipe(last_stream_name, _MixVideoStreams(output_video_streams))
+    )
+    video_filters = (
+        "".join([pipe.combine_filter() for pipe in video_pipes]) + vout.combine_filter()
+    )
+
+    if not audio_pipes:
+        LOGGER.debug(
+            f"Recieved: {len(video_pipes)} video pipes.\nComposed to {video_filters}. \nStream name for glueing used: {last_stream_name}. \nCustom ffmpeg args is: {ffmpeg_output_args}"
+        )
+        ffmpeg = ffmpeg.output(
+            output_path,
+            acodec="copy",
+            filter_complex=video_filters,
+            map=["[vout]", "0:a"],
+            **ffmpeg_output_args,
+        )
+        return ffmpeg
+
+    output_audio_streams = [pipe.output for pipe in audio_pipes]
+    aout = Pipe("aout").join(Pipe("", _MixAudioStreams(output_audio_streams)))
+    audio_filters = (
+        "".join([pipe.combine_filter() for pipe in audio_pipes]) + aout.combine_filter()
+    )
+
+    filters = video_filters + audio_filters
+
+    LOGGER.debug(
+        f"Recieved: {len(video_pipes)} video pipes and {len(audio_pipes)} audio pipes.\nComposed to {filter}. \nStream name for glueing used: {last_stream_name}\n Custom ffmpeg args is: {ffmpeg_output_args}"
+    )
+
+    ffmpeg = ffmpeg.output(
+        output_path,
+        acodec="aac",
+        filter_complex=filters,
+        map=["[vout]", "[aout]"],
+        **ffmpeg_output_args,
+    )
+    return ffmpeg
+
+
+def compose(
     video_path: str,
     output_path: str,
     video_filters: Sequence[Filter],
     audio_filters: Sequence[Filter],
-) -> None:
+    **ffmpeg_output_flags,
+) -> FFmpeg:
     """
     High level video composition function
 
@@ -115,13 +181,16 @@ async def compose(
     astream = "[aout]" if audio_changed else "0:a"
     vstream = "[vout]" if video_changed else "0:v"
 
-    LOGGER.debug(f"filter: {filter_complex}\n- video_output:{vstream}\n- audio_output:{astream}, audio_codec:{acodec}")
+    LOGGER.debug(
+        f"filter: {filter_complex}\n- video_output:{vstream}\n- audio_output:{astream}, audio_codec:{acodec}"
+    )
 
     ffmpeg = ffmpeg.output(
         output_path,
         acodec=acodec,
         filter_complex=filter_complex,
         map=[vstream, astream],
+        **ffmpeg_output_flags,
     )
 
     @ffmpeg.on("progress")
@@ -130,10 +199,4 @@ async def compose(
             f"Working on {progress.frame} frame, current fps = {progress.fps}, output size: ~{progress.size / 1024 / 1024}MB"
         )
 
-    try:
-        await ffmpeg.execute()
-    except FFmpegError as e:
-        LOGGER.critical(
-            f"OOOPS! You found a nasty bug in pycut! Please share your filter pipeline in issue and an exception!\n{e}"
-        )
-        raise e
+    return ffmpeg
