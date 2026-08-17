@@ -1,10 +1,7 @@
 import math
 from abc import ABC, abstractmethod
 from enum import Enum
-from itertools import count
 from string import Template
-
-_ids = count(1)
 
 
 class TextLocations(Enum):
@@ -82,9 +79,8 @@ class Pipe:
 
     def get_all_media_paths(self) -> list[str]:
         res = []
-        if self.filter:
-            if isinstance(self.filter, Media):
-                res = [self.filter.path]
+        if self.filter and isinstance(self.filter, Media):
+            res = [self.filter.path]
         if self._output_pipe:
             res += self._output_pipe.get_all_media_paths()
         return res
@@ -94,6 +90,10 @@ class Media(ABC):
     @property
     @abstractmethod
     def path(self) -> str:
+        pass
+
+    @abstractmethod
+    def set_id(self, id: int) -> None:
         pass
 
 
@@ -120,6 +120,7 @@ def _time_converter(human_time: str) -> int:
         hours, min, sec = human_time.replace("h", ":").replace("m", ":").split(":")
         return int(hours) * 3600 + int(min) * 60 + int(sec)
     return int(human_time)
+
 
 class VideoText(Filter):
     def __init__(
@@ -217,17 +218,24 @@ class VideoImage(Filter, Media):
         self.start_time = _time_converter(start_time)
         self.location = location.value
         self.size = size
-        self.end_time = self.start_time + 5 if not end_time else _time_converter(end_time)
+        self.end_time = (
+            self.start_time + 5 if not end_time else _time_converter(end_time)
+        )
         self.linked_text = None
+        self.image_index = None
 
         # total count of VideoImage instances
-        self.image_index = next(_ids)
 
     @property
     def path(self) -> str:
         return self.img_path
 
+    def set_id(self, id: int) -> None:
+        self.image_index = id
+
     def apply(self) -> Template:
+        if not self.image_index:
+            raise RuntimeError(f"Insertion ID for image {self.path} was not set.")
         return Template(
             f"[{self.image_index}:v]scale={self.size}:-2,format=rgba[img];[$input][img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})':alpha=premultiplied[$output];"
         )
@@ -356,9 +364,11 @@ class NewAudio(Media, Filter):
     def __init__(self, audio_path: str, volume: float):
         self.audio_path = audio_path
         self.volume = volume
-        self.stream_id = next(_ids)
+        self.stream_id = None
 
     def apply(self) -> Template:
+        if not self.stream_id:
+            raise RuntimeError(f"Insertion ID for audio {self.path} was not set.")
         return Template(
             f"[{self.stream_id}:a]volume={self.volume}[{self.stream_id}_edit];[$input][{self.stream_id}_edit]amix=inputs=2:duration=first[$output];"
         )
@@ -366,6 +376,9 @@ class NewAudio(Media, Filter):
     @property
     def path(self) -> str:
         return self.audio_path
+
+    def set_id(self, id: int) -> None:
+        self.stream_id = id
 
     @property
     def stream_type(self) -> str:

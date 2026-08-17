@@ -1,7 +1,7 @@
 import logging
 import re
 from collections.abc import Sequence
-from itertools import chain
+from itertools import chain, count
 from pathlib import Path
 
 import cv2
@@ -12,8 +12,6 @@ from pycut.video.classes import (
     Filter,
     Media,
     Pipe,
-    _MixAudioStreams,
-    _MixVideoStreams,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -68,6 +66,7 @@ async def get_duration(video_path: str) -> int:
     fps = v.get(cv2.CAP_PROP_FPS)
     return round(frames / fps)
 
+
 ## Scheduled on rewriting
 # def compose_piped(
 #     video_path: str,
@@ -112,7 +111,7 @@ async def get_duration(video_path: str) -> int:
 #     )
 
 #     filters = video_filters + audio_filters
-    
+
 #     LOGGER.debug(
 #         f"Recieved: {len(video_pipes)} video pipes and {len(audio_pipes)} audio pipes.\nComposed to {filters}. \nStream name for glueing used: {last_stream_name}\n Custom ffmpeg args is: {ffmpeg_output_args}"
 #     )
@@ -125,6 +124,10 @@ async def get_duration(video_path: str) -> int:
 #         **ffmpeg_output_args,
 #     )
 #     return ffmpeg
+
+# Used for correct automatic ID assignment for additional Media instances
+# Starts from 1, because video feed have 0 id
+_ids = count(1)
 
 
 def compose(
@@ -155,6 +158,7 @@ def compose(
     for filter in chain(video_filters, audio_filters):
         if isinstance(filter, Media):
             ffmpeg.input(filter.path)
+            filter.set_id(next(_ids))
     for filter in chain(reversed(video_filters), reversed(audio_filters)):
         if filter.stream_type == "audio":
             aout = aout.join(Pipe("0:a", filter))
