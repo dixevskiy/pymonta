@@ -11,7 +11,6 @@ abstractions, and uses `ffmpeg.asyncio` for asynchronous processing.
 """
 
 import hashlib
-from typing import Any, Sequence
 import logging
 import re
 from collections.abc import Sequence
@@ -196,9 +195,9 @@ _ids = count(1)
 def compose(
     video_path: str,
     output_path: str,
-    video_filters: Sequence[Filter] | None,
-    audio_filters: Sequence[Filter] | None,
-    **ffmpeg_output_flags: Any,
+    video_filters: Sequence[Filter] | None = None,
+    audio_filters: Sequence[Filter] | None = None,
+    **ffmpeg_output_flags,
 ) -> FFmpeg:
     """Compose a video with custom audio/video filters and output to a new file.
 
@@ -238,6 +237,11 @@ def compose(
           starting from 1.
         - The filter order matters.
     """
+    if not ffmpeg_output_flags:
+        LOGGER.info(
+            "No custom ffmpeg output flags provided, using predefined defaults."
+        )
+        ffmpeg_output_flags.update({"c:v": "libx264"})
     if Path(output_path).exists():
         raise RuntimeError(
             "Output file already exists! Handle it manually. Halting video composing."
@@ -297,9 +301,8 @@ def compose(
     return ffmpeg
 
 
-async def render_text(
+def render_text(
     text: str,
-    proj_path: str,
     font_path: str | None = None,
     font_size: int = 34,
     color: str = "white",
@@ -318,8 +321,6 @@ async def render_text(
 
     Args:
         text: The text to render. Can contain `\\n` for manual line breaks.
-        proj_path: Project root directory. Images are cached in
-            `{proj_path}/texts/`.
         font_path: Path to a TrueType font file (.ttf). If `None`, uses
             the bundled DejaVuSans font (assumed to be available in the
             development environment).
@@ -359,7 +360,8 @@ async def render_text(
     )
     m.update(unique_text_desc.encode())
     hash = m.hexdigest()
-    output_path = Path(proj_path) / "texts" / (hash + ".png")
+    proj_path = Path().cwd()
+    output_path = proj_path / "texts" / (hash + ".png")
     output_path.parent.mkdir(exist_ok=True, parents=True)
 
     if output_path.exists():
@@ -407,4 +409,36 @@ async def render_text(
     draw = ImageDraw.Draw(img)
     draw.text((size[0] // 2, size[1] // 2), text, color, font, align=align, anchor="mm")
     img.save(output_path)
+    return str(output_path)
+
+
+def digest_pillow(
+    pillow_image: Image.Image,
+) -> str:
+    """
+    Function for custom pillow images support.
+
+    Use it with VideoOverlay() when you want to display raw Pillow image on video.
+    """
+    project_path = Path.cwd()
+    cache_dir = project_path / "pimgs"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Вычисляем хеш по уменьшенной копии
+    thumb = pillow_image.copy()
+    thumb.thumbnail((64, 64), Image.Resampling.LANCZOS)
+    # Конвертируем в RGBA, чтобы избежать проблем с палитрой и режимами
+    if thumb.mode not in ("RGBA", "RGB"):
+        thumb = thumb.convert("RGBA")
+    img_hash = hashlib.sha1(thumb.tobytes()).hexdigest()
+
+    output_path = cache_dir / f"{img_hash}.png"
+
+    # Если файл уже существует — возвращаем его, не пересохраняя
+    if output_path.exists():
+        LOGGER.debug(f"Cache hit: {output_path}")
+        return str(output_path)
+
+    pillow_image.save(output_path)
+    LOGGER.info(f"Cached image: {output_path}")
     return str(output_path)

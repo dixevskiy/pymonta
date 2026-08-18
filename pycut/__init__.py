@@ -23,66 +23,56 @@ Subpackages:
 """
 
 # Import core types and functions for easy access
+from pycut.jsons import is_serializable, serialize, unserialize
+
+# from pycut.speech import transcribe_file, generate_srt, find_keywords
+from pycut.proj_funcs import generate_project
 from pycut.video.classes import (
-    Filter,
-    Media,
-    Pipe,
-    TextLocations,
-    Locations,
-    VideoText,
-    VideoOverlay,
     ChangeVolume,
-    VideoAdjustments,
-    NewAudio,
-    InsertAudio,
-    RemoveAudio,
-    MuteRange,
-    HardSubtitles,
     Cut,
+    Filter,
+    HardSubtitles,
+    InsertAudio,
+    Locations,
+    Media,
+    MuteRange,
+    NewAudio,
+    Pipe,
+    RemoveAudio,
     Trim,
+    VideoAdjustments,
+    VideoOverlay,
 )
 from pycut.video.functions import (
     compose,
     detect_silence_fragments,
+    digest_pillow,
     get_duration,
     render_text,
 )
-from pycut.jsons import serialize, unserialize, is_serializable
-
-# from pycut.speech import transcribe_file, generate_srt, find_keywords
-from pycut.proj_funcs import generate_project
 
 __all__ = [
-    # Core classes
-    "Filter",
-    "Media",
-    "Pipe",
-    "TextLocations",
-    "Locations",
-    "VideoText",
-    "VideoOverlay",
     "ChangeVolume",
-    "VideoAdjustments",
-    "NewAudio",
-    "InsertAudio",
-    "RemoveAudio",
-    "MuteRange",
-    "HardSubtitles",
     "Cut",
+    "Filter",
+    "HardSubtitles",
+    "InsertAudio",
+    "Locations",
+    "Media",
+    "MuteRange",
+    "NewAudio",
+    "Pipe",
+    "RemoveAudio",
     "Trim",
-    # High-level functions
+    "VideoAdjustments",
+    "VideoOverlay",
     "compose",
     "detect_silence_fragments",
+    "digest_pillow",
+    "generate_project",
     "get_duration",
+    "is_serializable",
     "render_text",
-    # JSON utilities
     "serialize",
     "unserialize",
-    "is_serializable",
-    # # Speech utilities
-    # "transcribe_file",
-    # "generate_srt",
-    # "find_keywords",
-    # Project generation
-    "generate_project",
 ]

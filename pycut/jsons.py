@@ -51,7 +51,7 @@ def serialize(data: Any, json_path: str) -> None:
     """
     file = Path(json_path)
     if not is_serializable(data):
-        LOGGER.error(f"Serialization failed for data. It's not serializable.")
+        LOGGER.error("Serialization failed for data. It's not serializable.")
     try:
         file.touch(exist_ok=True)  # create parent directories if needed?
         # Note: Path.touch() does not create parent directories; we may want to ensure they exist.

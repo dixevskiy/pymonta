@@ -11,8 +11,9 @@ timestamps to OpenAI's Whisper.
 """
 
 import logging
+from collections.abc import Sequence
 from fnmatch import fnmatch
-from typing import Any, Optional, Sequence
+from typing import Any
 
 import whisper_timestamped as whisper
 
@@ -119,7 +120,7 @@ def generate_srt(transcription: Sequence[dict[str, Any]]) -> str:
 def find_keywords(
     transcription: Sequence[dict[str, Any]],
     keyword: str,
-) -> Optional[list[tuple[int, int]]]:
+) -> list[tuple[int, int]] | None:
     """Find all occurrences of a keyword in the transcription and return timestamps.
 
     The function performs a case-sensitive, whole word search on transcription.

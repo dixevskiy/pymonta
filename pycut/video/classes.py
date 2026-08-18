@@ -14,30 +14,9 @@ The classes are designed to work with the `compose` function from the main
 module, building a filter_complex string via `Pipe.combine_filter()`.
 """
 
-import math
 from abc import ABC, abstractmethod
 from enum import Enum
 from string import Template
-from typing import Optional, Sequence, Union
-from warnings import deprecated
-
-
-@deprecated("Use `render_text()` with `VideoOverlay` instead")
-class TextLocations(Enum):
-    """Predefined positions for text overlay (used by `VideoText`).
-
-    Each value is an FFmpeg `drawtext` position expression.
-    """
-
-    CENTER = "x=(w-tw)/2:y=(h-th)/2"
-    BOTTOM_RIGHT = "x=(w-tw)/2+(w-tw)/3:y=(h-th)/2+(h-th)/3"
-    BOTTOM_LEFT = "x=(w-tw)/2-(w-tw)/3:y=(h-th)/2+(h-th)/3"
-    UPPER_RIGHT = "x=(w-tw)/2+(w-tw)/3:y=(h-th)/2-(h-th)/3"
-    UPPER_LEFT = "x=(w-tw)/2-(w-tw)/3:y=(h-th)/2-(h-th)/3"
-    HORIZONTAL_RIGHT = "x=(w-tw)/2+(w-tw)/3:y=(h-th)/2"
-    HORIZONTAL_LEFT = "x=(w-tw)/2-(w-tw)/3:y=(h-th)/2"
-    HORIZONTAL_UP = "x=(w-tw)/2:y=(h-th)/2-(h-th)/3"
-    HORIZONTAL_DOWN = "x=(w-tw)/2:y=(h-th)/2+(h-th)/3"
 
 
 class Locations(Enum):
@@ -74,9 +53,9 @@ class Pipe:
     def __init__(
         self,
         stream_name: str,
-        filter: Optional["Filter"] = None,
-        input_pipe: Optional["Pipe"] = None,
-        output_pipe: Optional["Pipe"] = None,
+        filter: Filter | None = None,
+        input_pipe: Pipe | None = None,
+        output_pipe: Pipe | None = None,
     ) -> None:
         """Initialize a pipe with an optional filter and neighbouring pipes.
 
@@ -141,7 +120,7 @@ class Pipe:
             res += self._output_pipe.combine_filter()
         return res
 
-    def join(self, pipe: "Pipe") -> "Pipe":
+    def join(self, pipe: Pipe) -> Pipe:
         """Link this pipe as the output of the given pipe.
 
         Args:
@@ -178,7 +157,6 @@ class Media(ABC):
     @abstractmethod
     def path(self) -> str:
         """The filesystem path to the media file."""
-        pass
 
     @abstractmethod
     def set_id(self, id: int) -> None:
@@ -187,7 +165,6 @@ class Media(ABC):
         Args:
             id: The unique integer ID (e.g., for `[id:v]` or `[id:a]`).
         """
-        pass
 
 
 class Filter(ABC):
@@ -204,13 +181,11 @@ class Filter(ABC):
 
         The template must contain `$input` and `$output` placeholders.
         """
-        pass
 
     @property
     @abstractmethod
     def stream_type(self) -> str:
         """Return `"video"` or `"audio"`."""
-        pass
 
 
 def _time_converter(human_time: str) -> int:
@@ -244,123 +219,38 @@ def _time_converter(human_time: str) -> int:
     return int(human_time)
 
 
-@deprecated("Use `render_text()` with `VideoOverlay` instead")
-class VideoText(Filter):
-    """Filter to overlay text on a video stream.
-
-    The text appears between `start_time` and an automatically computed
-    `end_time` (based on text length, ~10 chars/second), unless overridden.
-    Supports manual newline (`\n`) and automatic word wrapping.
-    """
-
-    def __init__(
-        self,
-        start_time: str,
-        text: str,
-        location: TextLocations,
-        size: int = 34,
-        /,
-        font_color: str = "white",
-        end_time: Optional[int] = None,
-        wraplenght: int = 32,
-        text_align: str = "C",
-    ) -> None:
-        """Initialise a text overlay filter.
-
-        Args:
-            start_time: When the text appears (human‑readable).
-            text: The text to display.
-            location: Position on screen (from `TextLocations`).
-            size: Font size in pixels.
-            font_color: Colour name or hex code (e.g., `"#FF0000"`).
-            end_time: Optional override for when text disappears
-                (if not given, estimated from text length).
-            wraplenght: Max chars per line before wrapping.
-            text_align: Alignment: `"C"` (center), `"L"` (left), `"R"` (right).
-
-        Note:
-            - The text is automatically wrapped to `wraplenght` characters.
-            - Manual newlines (`\n`) are preserved.
-            - Colons (`:`) are escaped for FFmpeg compatibility.
-        """
-        self.start_time = _time_converter(start_time)
-        self.location = location
-        self.size = size
-        self.wraplenght = wraplenght
-        self.text_align = text_align
-        self.font_color = font_color
-        # estimate reading time: average wpm=150, avg word length=4 -> 10 chars/sec
-        self.end_time = (
-            self.start_time + math.ceil(len(text) / 10)
-            if end_time is None
-            else end_time
-        )
-
-        # Strip single quotes (guard for FFmpeg)
-        self.text = text.replace("'", "")
-
-        # Wrap long lines
-        if len(text) > wraplenght:
-            text = text.replace("\n", "@@ ")  # preserve manual breaks
-            words = text.split()
-            wrapped_lines = []
-            line_sum = 0
-            for word in words:
-                if "@@" in word:  # preserve manual breaks
-                    word = word.replace("@@", "")
-                    wrapped_lines.append(f"{word}\n")
-                    line_sum = 0
-                    continue
-                if len(word) + line_sum >= wraplenght:
-                    wrapped_lines.append("\n")
-                    line_sum = 0
-                line_sum += len(word)
-                wrapped_lines.append(word)
-            self.text = " ".join(wrapped_lines)
-
-        # Escape colons for FFmpeg
-        self.text = self.text.replace(":", r"\:")
-
-    @property
-    def stream_type(self) -> str:
-        return "video"
-
-    def apply(self) -> Template:
-        return Template(
-            f"[$input]drawtext=enable='between(t,{self.start_time},{self.end_time})':text='{self.text}':fontcolor={self.font_color}:text_align={self.text_align}:fontsize={self.size}:{self.location.value}[$output];"
-        )
-
-
 class VideoOverlay(Filter, Media):
-    """Filter to overlay an image on a video stream.
+    """Filter to overlay a video stream on a base video stream.
 
-    The image is scaled to a given size, and appears between `start_time`
+    The input is scaled to a given size, and appears between `start_time`
     and `end_time`. It uses the `overlay` filter with premultiplied alpha.
     """
 
     def __init__(
         self,
-        image_path: str,
+        overlay_path: str,
         start_time: str,
-        location: Locations | str,
+        location: Locations | tuple[int, int],
         size: int = 320,
         /,
-        end_time: Optional[str] = None,
+        end_time: str | None = None,
     ) -> None:
-        """Initialise an image overlay filter.
+        """Initialise a video overlay filter.
 
         Args:
-            image_path: Path to the image.
-            start_time: When the image appears (human‑readable).
+            overlay_path: Path to the overlay.
+            start_time: When the overlay appears (human-readable).
             location: Position on screen (from `Locations` or manual placement).
             size: Width in pixels; height is scaled to keep aspect ratio.
-            end_time: When the image disappears (human‑readable).
+            end_time: When the image disappears (human-readable).
                 If not given, defaults to start + 5 seconds.
         """
-        self.img_path = image_path
+        self.o_path = overlay_path
         self.start_time = _time_converter(start_time)
         self.location = (
-            location if not isinstance(location, Locations) else location.value
+            f"x={location[0]}:y={location[1]}"
+            if not isinstance(location, Locations)
+            else location.value
         )
         self.size = size
         self.end_time = (
@@ -370,7 +260,7 @@ class VideoOverlay(Filter, Media):
 
     @property
     def path(self) -> str:
-        return self.img_path
+        return self.o_path
 
     def set_id(self, id: int) -> None:
         self.image_index = id
@@ -519,10 +409,10 @@ class VideoAdjustments(Filter):
 
     def __init__(
         self,
-        brightness: Optional[float] = None,
-        gamma: Optional[float] = None,
-        contrast: Optional[float] = None,
-        saturation: Optional[float] = None,
+        brightness: float | None = None,
+        gamma: float | None = None,
+        contrast: float | None = None,
+        saturation: float | None = None,
     ) -> None:
         """Initialise a video adjustment filter.
 

@@ -35,11 +35,9 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
-proj_path = "$proj_path"
-
 video_filters = [
     *Trim("5s", "20s"),
-    VideoOverlay("10s", render_text("Hello world!", proj_path), Locations.CENTER)
+    VideoOverlay("10s", render_text("Hello world!"), Locations.CENTER)
 ]
 
 async def main():
