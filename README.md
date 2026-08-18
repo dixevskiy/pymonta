@@ -13,6 +13,7 @@ Video redacting library built on top of ffmpeg, whisper and opencv for the nerds
 - Keyword search in transcription with timestamps
 - Filter based declaritive editing
 - Integration with Pillow
+- Wrapper around scenedetect
 
 ### Planned features
 

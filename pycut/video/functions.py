@@ -21,6 +21,7 @@ import cv2
 from ffmpeg.asyncio import FFmpeg
 from ffmpeg.progress import Progress
 from PIL import Image, ImageDraw, ImageFont
+from scenedetect import ContentDetector, detect
 
 from pycut.video.classes import (
     Filter,
@@ -442,3 +443,17 @@ def digest_pillow(
     pillow_image.save(output_path)
     LOGGER.info(f"Cached image: {output_path}")
     return str(output_path)
+
+
+def detect_scenes(video_path: str, threshold: int = 27) -> list[tuple[float, float]]:
+    """
+    Wrapper around scenedetect library
+
+    Returns:
+        list of tuples with floats which represent time of start and end of scene in seconds.
+    """
+    scene_list = detect(video_path, ContentDetector(threshold))
+    res = []
+    for scene in scene_list:
+        res.append((scene[0].get_seconds(), scene[1].get_seconds()))
+    return res

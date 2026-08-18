@@ -8,6 +8,7 @@ dependencies = [
     "opencv-python>=5.0.0.93",
     "pillow>=12.3.0",
     "python-ffmpeg>=2.0.12",
+    "scenedetect>=0.7.1",
     "whisper-timestamped>=1.15.9",
 ]
 
