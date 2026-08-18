@@ -14,8 +14,9 @@ The default script includes:
 """
 
 from pathlib import Path
+from string import Template
 
-DEFAULT_SCRIPT = """
+DEFAULT_SCRIPT = Template("""
 # This is a python script! Yes, you can edit videos with Python now!
 # Moreover, you can modify and interfere with the mere lib you using to edit videos.
 # Let me create some basic stuff for you...
@@ -23,7 +24,7 @@ DEFAULT_SCRIPT = """
 import logging
 import sys
 import asyncio
-from pycut import compose, Trim, VideoText, TextLocations
+from pycut import compose, Trim, VideoOverlay, Locations, render_text
 
 # For information use docstrings from the lib.
 # help(pycut)
@@ -34,9 +35,11 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
+proj_path = "$proj_path"
+
 video_filters = [
     *Trim("5s", "20s"),
-    VideoText("10s", "Hello World!", TextLocations.CENTER)
+    VideoOverlay("10s", render_text("Hello world!", proj_path), Locations.CENTER)
 ]
 
 async def main():
@@ -44,7 +47,7 @@ async def main():
     await ffmpeg.execute()
 
 asyncio.run(main())
-"""
+""")
 
 
 def generate_project(proj_dir: str) -> None:
@@ -64,5 +67,7 @@ def generate_project(proj_dir: str) -> None:
     """
     proj_path = Path(proj_dir)
     proj_path.mkdir(exist_ok=True, parents=True)
+    texts_path = proj_path / "texts"
+    texts_path.mkdir(exist_ok=True)
     with open(proj_path / "video_script.py", "w+") as f:
-        f.write(DEFAULT_SCRIPT)
+        f.write(DEFAULT_SCRIPT.safe_substitute(proj_path=proj_path))

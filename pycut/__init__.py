@@ -4,6 +4,7 @@ a Python video editing toolkit for tech nerds.
 pycut provides an abstraction over FFmpeg's filter graphs. It allows you
 to compose complex video/audio edits using simple, chainable filters without
 writing raw FFmpeg commands.
+Import speech modules manually.
 
 Main features:
 - Declarative filter composition using `Pipe` and `Filter` abstractions.
@@ -27,9 +28,9 @@ from pycut.video.classes import (
     Media,
     Pipe,
     TextLocations,
-    ImageLocations,
+    Locations,
     VideoText,
-    VideoImage,
+    VideoOverlay,
     ChangeVolume,
     VideoAdjustments,
     NewAudio,
@@ -40,9 +41,15 @@ from pycut.video.classes import (
     Cut,
     Trim,
 )
-from pycut.video.functions import compose, detect_silence_fragments, get_duration
+from pycut.video.functions import (
+    compose,
+    detect_silence_fragments,
+    get_duration,
+    render_text,
+)
 from pycut.jsons import serialize, unserialize, is_serializable
-from pycut.speech import transcribe_file, generate_srt, find_keywords
+
+# from pycut.speech import transcribe_file, generate_srt, find_keywords
 from pycut.proj_funcs import generate_project
 
 __all__ = [
@@ -51,9 +58,9 @@ __all__ = [
     "Media",
     "Pipe",
     "TextLocations",
-    "ImageLocations",
+    "Locations",
     "VideoText",
-    "VideoImage",
+    "VideoOverlay",
     "ChangeVolume",
     "VideoAdjustments",
     "NewAudio",
@@ -67,14 +74,15 @@ __all__ = [
     "compose",
     "detect_silence_fragments",
     "get_duration",
+    "render_text",
     # JSON utilities
     "serialize",
     "unserialize",
     "is_serializable",
-    # Speech utilities
-    "transcribe_file",
-    "generate_srt",
-    "find_keywords",
+    # # Speech utilities
+    # "transcribe_file",
+    # "generate_srt",
+    # "find_keywords",
     # Project generation
     "generate_project",
 ]

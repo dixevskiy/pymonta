@@ -2,8 +2,15 @@
 
 Video redacting library built on top of ffmpeg, whisper and opencv for the nerds.
 
-## Planned features
+# Ready to use features
 
 - Speech recognition
-- Declarative video editing
-- Reproducable video editing :P
+- Automatic subtitles (srt) generation
+- Keyword search in transcription with timestamps
+- Filter based declaritive editing
+
+# Planned features
+
+- Integration with Pillow
+- Prerendering of some edits
+- GPU acceleration

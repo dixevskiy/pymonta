@@ -4,11 +4,10 @@ FFmpeg filter and pipe abstractions for video/audio composition.
 This module defines the building blocks for constructing complex FFmpeg filter
 graphs in a Pythonic way. It provides:
 - `Pipe`: a chainable representation of a stream with filters.
-- `Filter`: base class for all filters (video/audio adjustments, overlays, etc.).
-- `Media`: mixin for filters that reference external files (images, audio).
-- Concrete filter classes: `VideoText`, `VideoImage`, `VideoAdjustments`,
-  `ChangeVolume`, `InsertAudio`, `HardSubtitles`, and more.
-- Utility functions like `_time_converter` for human‑readable time strings.
+- `Filter`: interface for all filters (video/audio adjustments, overlays, etc.).
+- `Media`: interface for filters that reference external files (images, audio).
+- Concrete filter classes: `VideoOverlay`, `VideoAdjustments`, and more.
+- Utility functions like `_time_converter` for human-readable time strings.
 - Convenience factories (`Cut`, `Trim`) that return paired video/audio filters.
 
 The classes are designed to work with the `compose` function from the main
@@ -20,8 +19,10 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from string import Template
 from typing import Optional, Sequence, Union
+from warnings import deprecated
 
 
+@deprecated("Use `render_text()` with `VideoOverlay` instead")
 class TextLocations(Enum):
     """Predefined positions for text overlay (used by `VideoText`).
 
@@ -39,8 +40,8 @@ class TextLocations(Enum):
     HORIZONTAL_DOWN = "x=(w-tw)/2:y=(h-th)/2+(h-th)/3"
 
 
-class ImageLocations(Enum):
-    """Predefined positions for image overlay (used by `VideoImage`).
+class Locations(Enum):
+    """Predefined positions for image overlay (used by `VideoOverlay`).
 
     Each value is an FFmpeg `overlay` position expression.
     """
@@ -243,6 +244,7 @@ def _time_converter(human_time: str) -> int:
     return int(human_time)
 
 
+@deprecated("Use `render_text()` with `VideoOverlay` instead")
 class VideoText(Filter):
     """Filter to overlay text on a video stream.
 
@@ -289,7 +291,9 @@ class VideoText(Filter):
         self.font_color = font_color
         # estimate reading time: average wpm=150, avg word length=4 -> 10 chars/sec
         self.end_time = (
-            self.start_time + math.ceil(len(text) / 10) if end_time is None else end_time
+            self.start_time + math.ceil(len(text) / 10)
+            if end_time is None
+            else end_time
         )
 
         # Strip single quotes (guard for FFmpeg)
@@ -302,7 +306,7 @@ class VideoText(Filter):
             wrapped_lines = []
             line_sum = 0
             for word in words:
-                if "@@" in word: # preserve manual breaks
+                if "@@" in word:  # preserve manual breaks
                     word = word.replace("@@", "")
                     wrapped_lines.append(f"{word}\n")
                     line_sum = 0
@@ -327,7 +331,7 @@ class VideoText(Filter):
         )
 
 
-class VideoImage(Filter, Media):
+class VideoOverlay(Filter, Media):
     """Filter to overlay an image on a video stream.
 
     The image is scaled to a given size, and appears between `start_time`
@@ -338,7 +342,7 @@ class VideoImage(Filter, Media):
         self,
         image_path: str,
         start_time: str,
-        location: ImageLocations,
+        location: Locations | str,
         size: int = 320,
         /,
         end_time: Optional[str] = None,
@@ -348,14 +352,16 @@ class VideoImage(Filter, Media):
         Args:
             image_path: Path to the image.
             start_time: When the image appears (human‑readable).
-            location: Position on screen (from `ImageLocations`).
+            location: Position on screen (from `Locations` or manual placement).
             size: Width in pixels; height is scaled to keep aspect ratio.
             end_time: When the image disappears (human‑readable).
                 If not given, defaults to start + 5 seconds.
         """
         self.img_path = image_path
         self.start_time = _time_converter(start_time)
-        self.location = location.value
+        self.location = (
+            location if not isinstance(location, Locations) else location.value
+        )
         self.size = size
         self.end_time = (
             self.start_time + 5 if end_time is None else _time_converter(end_time)
@@ -709,7 +715,7 @@ class _MixVideoStreams(Filter):
 
 class _MixAudioStreams(Filter):
     """Internal filter to mix multiple audio streams together.
-    
+
     This is planned to be used by the `Pipe` system to combine several video inputs.
     """
 

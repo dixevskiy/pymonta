@@ -10,6 +10,7 @@ It relies on the `pycut.video.classes` module for `Filter`, `Media`, and `Pipe`
 abstractions, and uses `ffmpeg.asyncio` for asynchronous processing.
 """
 
+import hashlib
 from typing import Any, Sequence
 import logging
 import re
@@ -20,6 +21,7 @@ from pathlib import Path
 import cv2
 from ffmpeg.asyncio import FFmpeg
 from ffmpeg.progress import Progress
+from PIL import Image, ImageDraw, ImageFont
 
 from pycut.video.classes import (
     Filter,
@@ -293,3 +295,116 @@ def compose(
         )
 
     return ffmpeg
+
+
+async def render_text(
+    text: str,
+    proj_path: str,
+    font_path: str | None = None,
+    font_size: int = 34,
+    color: str = "white",
+    bg_color: tuple[int, int, int, int] = (0, 0, 0, 0),  # прозрачный по умолчанию
+    align: str = "center",
+    wraplength: int = 32,
+) -> str:
+    """
+    Render text to a PNG image with transparent background, with caching.
+
+    This function creates an image containing the specified text, sized exactly
+    to fit the text (with small padding). Images are cached in a `texts/`
+    subdirectory under the project path, using a hash of the text and styling
+    parameters. Subsequent calls with the same parameters return the cached
+    image path instantly.
+
+    Args:
+        text: The text to render. Can contain `\\n` for manual line breaks.
+        proj_path: Project root directory. Images are cached in
+            `{proj_path}/texts/`.
+        font_path: Path to a TrueType font file (.ttf). If `None`, uses
+            the bundled DejaVuSans font (assumed to be available in the
+            development environment).
+        font_size: Font size in points (default: 34).
+        color: Text color (any format accepted by Pillow, e.g., "white",
+            "#FF0000", (255, 0, 0)). Default: "white".
+        bg_color: Background color as RGBA tuple. Default: (0, 0, 0, 0) —
+            fully transparent.
+        align: Text alignment within the image: "left", "center", or "right".
+            Default: "center".
+        wraplength: Maximum number of characters per line before automatic
+            wrapping. Default: 32.
+
+    Returns:
+        Absolute path to the generated (or cached) PNG image file.
+
+    Example:
+        >>> img_path = render_text(
+        ...     "Hello, World!",
+        ...     "./my_project",
+        ...     font_size=48,
+        ...     color="#FFD700",
+        ...     wraplength=20
+        ... )
+        >>> print(img_path)
+        './my_project/texts/abcde12345...png'
+
+    Note:
+        - Manual newlines (`\\n`) are preserved and override automatic wrapping.
+        - The image size is computed based on the rendered text dimensions
+          plus 10 pixels of padding on each side.
+        - The cache key includes: text, font_size, bg_color, color, align, font_path and wraplength
+    """
+    m = hashlib.sha1()
+    unique_text_desc = (
+        f"{text}{font_size}{bg_color}{color}{align}{font_path}{wraplength}"
+    )
+    m.update(unique_text_desc.encode())
+    hash = m.hexdigest()
+    output_path = Path(proj_path) / "texts" / (hash + ".png")
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+
+    if output_path.exists():
+        LOGGER.debug(f"Cache hit of text image: {output_path}")
+        return str(output_path)
+
+    font = ImageFont.truetype(
+        font_path or "Pillow/Tests/fonts/DejaVuSans.ttf", font_size
+    )
+
+    # Wrap long lines
+    if len(text) > wraplength:
+        text = text.replace("\n", "@@ ")  # preserve manual breaks
+        words = text.split()
+        wrapped_lines = []
+        line_sum = 0
+        for word in words:
+            if "@@" in word:  # preserve manual breaks
+                word = word.replace("@@", "")
+                wrapped_lines.append(f"{word}\n")
+                line_sum = 0
+                continue
+            if len(word) + line_sum >= wraplength:
+                wrapped_lines.append("\n")
+                line_sum = 0
+            line_sum += len(word)
+            wrapped_lines.append(word)
+        text = " ".join(wrapped_lines)
+
+    dummy_img = Image.new("RGBA", (1, 1))
+    draw = ImageDraw.Draw(dummy_img)
+
+    # Вычисляем bounding box текста
+    bbox = draw.textbbox((0, 0), text, font=font, align=align)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+
+    # Добавляем отступы
+    img_width = text_width + 2 * 10
+    img_height = text_height + 2 * 10
+
+    size = (int(img_width), int(img_height))
+
+    img = Image.new("RGBA", size, bg_color)
+    draw = ImageDraw.Draw(img)
+    draw.text((size[0] // 2, size[1] // 2), text, color, font, align=align, anchor="mm")
+    img.save(output_path)
+    return str(output_path)

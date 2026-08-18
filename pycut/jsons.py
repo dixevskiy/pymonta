@@ -32,7 +32,7 @@ def is_serializable(data: Any) -> bool:
     try:
         json.dumps(data)
         return True
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
 
