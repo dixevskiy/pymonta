@@ -65,7 +65,13 @@ def generate_project(proj_dir: str) -> None:
     """
     proj_path = Path(proj_dir)
     proj_path.mkdir(exist_ok=True, parents=True)
-    texts_path = proj_path / "texts"
-    texts_path.mkdir(exist_ok=True)
+    paths = proj_path / "texts"
+    paths.mkdir(exist_ok=True)
+    paths = proj_path / "pimgs"
+    paths.mkdir(exist_ok=True)
+    paths = proj_path / "texts"
+    paths.mkdir(exist_ok=True)
+    paths = proj_path / "baked"
+    paths.mkdir(exist_ok=True)
     with open(proj_path / "video_script.py", "w+") as f:
         f.write(DEFAULT_SCRIPT.safe_substitute(proj_path=proj_path))

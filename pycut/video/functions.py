@@ -10,11 +10,12 @@ It relies on the `pycut.video.classes` module for `Filter`, `Media`, and `Pipe`
 abstractions, and uses `ffmpeg.asyncio` for asynchronous processing.
 """
 
+import asyncio
 import hashlib
 import logging
 import re
 from collections.abc import Sequence
-from itertools import chain, count
+from itertools import count
 from pathlib import Path
 
 import cv2
@@ -193,12 +194,30 @@ async def get_duration(video_path: str) -> int:
 _ids = count(1)
 
 
+def build_pipelines(filters: Sequence[Filter]) -> tuple[Pipe, Pipe]:
+    vout = Pipe("vout")
+    aout = Pipe("aout")
+
+    # build the filter graph (reverse order to chain correctly)
+    LOGGER.debug(f"Recieved filtres: {[type(f).__name__ for f in filters]}")
+    for filter in reversed(filters):
+        if filter.stream_type == "audio":
+            aout = aout.join(Pipe("0:a", filter))
+            continue
+        if filter.stream_type == "video":
+            vout = vout.join(Pipe("0:v", filter))
+            continue
+        LOGGER.warning(
+            f"Undefined filter type!! {filter}, {filter.stream_type}. Please use correct decorators for own filters!"
+        )
+    LOGGER.debug(
+        f"Built pipeline:\n-VIDEO:{[type(f).__name__ for f in vout.get_all_filters()]}\n-AUDIO:{[type(f).__name__ for f in aout.get_all_filters()]}"
+    )
+    return (vout, aout)
+
+
 def compose(
-    video_path: str,
-    output_path: str,
-    video_filters: Sequence[Filter] | None = None,
-    audio_filters: Sequence[Filter] | None = None,
-    **ffmpeg_output_flags,
+    video_path: str, output_path: str, filters: Sequence[Filter], **ffmpeg_output_flags
 ) -> FFmpeg:
     """Compose a video with custom audio/video filters and output to a new file.
 
@@ -250,36 +269,22 @@ def compose(
     LOGGER.info(f"Starting composition process for {video_path}.")
     ffmpeg = FFmpeg().input(video_path)
 
-    vout = Pipe("vout")
-    aout = Pipe("aout")
-    audio_changed = False
-    video_changed = False
-
-    if not video_filters:
-        video_filters = []
-    if not audio_filters:
-        audio_filters = []
-
     # First pass: add all external media as inputs and assign IDs
-    for filter in chain(video_filters, audio_filters):
+    for filter in filters:
         if isinstance(filter, Media):
             ffmpeg.input(filter.path)
             filter.set_id(next(_ids))
 
-    # Second pass: build the filter graph (reverse order to chain correctly)
-    for filter in chain(reversed(video_filters), reversed(audio_filters)):
-        if filter.stream_type == "audio":
-            aout = aout.join(Pipe("0:a", filter))
-            audio_changed = True
-        if filter.stream_type == "video":
-            vout = vout.join(Pipe("0:v", filter))
-            video_changed = True
+    vout, aout = build_pipelines(filters)
 
-    filter_complex = f"{vout.combine_filter()}{aout.combine_filter()}"
+    audio_changed = len(aout.get_all_filters()) > 0
+    video_changed = len(vout.get_all_filters()) > 0
 
     acodec = "aac" if audio_changed else "copy"
     astream = "[aout]" if audio_changed else "0:a"
     vstream = "[vout]" if video_changed else "0:v"
+
+    filter_complex = f"{vout.combine_filter()}{aout.combine_filter()}"
 
     LOGGER.debug(
         f"filter: {filter_complex}\n- video_output:{vstream}\n- audio_output:{astream}, audio_codec:{acodec}"
@@ -457,3 +462,30 @@ def detect_scenes(video_path: str, threshold: int = 27) -> list[tuple[float, flo
     for scene in scene_list:
         res.append((scene[0].get_seconds(), scene[1].get_seconds()))
     return res
+
+
+def bake_filters(input_file: str, filters: Sequence[Filter]) -> str:
+    """
+    Applies filters to input_file and saves baked result.
+
+    Returns:
+        - path of baked result
+    Note:
+        - If given same input_file and filters then previous baked result reused.
+        - sha1 hashing used for path generation.
+        - Runs seperate async event loop to generate video with ffmpeg! Use with caution!
+    """
+    unique_desk = f"{input_file}{[type(f).__name__ for f in filters]}"
+    input_ext = Path(input_file).suffix
+    hash = hashlib.sha1(unique_desk.encode()).hexdigest()
+    save_path = Path().cwd() / "baked" / (hash + input_ext)
+    if save_path.exists():
+        LOGGER.debug(f"Cache hit: {save_path}")
+        return str(save_path)
+    LOGGER.debug(
+        f"Starting baking process for {input_file}.\n-extension: {input_ext}\n-unquie_hash: {hash}\n-save_path:{save_path}"
+    )
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    bake = compose(input_file, str(save_path), filters)
+    asyncio.run(bake.execute())
+    return str(save_path)

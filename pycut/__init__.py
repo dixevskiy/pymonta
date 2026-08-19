@@ -28,6 +28,7 @@ from pycut.jsons import is_serializable, serialize, unserialize
 # from pycut.speech import transcribe_file, generate_srt, find_keywords
 from pycut.proj_funcs import generate_project
 from pycut.video.classes import (
+    ChangeSpeed,
     ChangeVolume,
     Cut,
     Filter,
@@ -42,8 +43,11 @@ from pycut.video.classes import (
     Trim,
     VideoAdjustments,
     VideoOverlay,
+    audio_filter,
+    video_filter,
 )
 from pycut.video.functions import (
+    bake_filters,
     compose,
     detect_silence_fragments,
     digest_pillow,
@@ -52,6 +56,7 @@ from pycut.video.functions import (
 )
 
 __all__ = [
+    "ChangeSpeed",
     "ChangeVolume",
     "Cut",
     "Filter",
@@ -66,6 +71,8 @@ __all__ = [
     "Trim",
     "VideoAdjustments",
     "VideoOverlay",
+    "audio_filter",
+    "bake_filters",
     "compose",
     "detect_silence_fragments",
     "digest_pillow",
@@ -75,4 +82,5 @@ __all__ = [
     "render_text",
     "serialize",
     "unserialize",
+    "video_filter",
 ]

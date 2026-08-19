@@ -146,6 +146,19 @@ class Pipe:
             res += self._output_pipe.get_all_media_paths()
         return res
 
+    def get_all_filters(self) -> list[Filter | None] | list[Filter]:
+        """Collects all filters in pipe chain.
+
+        Returns:
+            A list of filters in the chain
+        """
+        res = []
+        if self.filter:
+            res = [self.filter]
+        if self._output_pipe:
+            res += self._output_pipe.get_all_filters()
+        return res
+
 
 class Media(ABC):
     """Mixin for filters that reference an external media file (image, audio).
@@ -158,13 +171,18 @@ class Media(ABC):
     def path(self) -> str:
         """The filesystem path to the media file."""
 
-    @abstractmethod
     def set_id(self, id: int) -> None:
-        """Assign a stream index (ID) for use in filter graphs.
+        self.media_id = id
 
-        Args:
-            id: The unique integer ID (e.g., for `[id:v]` or `[id:a]`).
-        """
+
+def video_filter(cls):
+    cls.stream_type = "video"
+    return cls
+
+
+def audio_filter(cls):
+    cls.stream_type = "audio"
+    return cls
 
 
 class Filter(ABC):
@@ -175,17 +193,14 @@ class Filter(ABC):
     whether the filter operates on video or audio.
     """
 
+    stream_type = None
+
     @abstractmethod
     def apply(self) -> Template:
         """Return the filter string template.
 
         The template must contain `$input` and `$output` placeholders.
         """
-
-    @property
-    @abstractmethod
-    def stream_type(self) -> str:
-        """Return `"video"` or `"audio"`."""
 
 
 def _time_converter(human_time: str) -> int:
@@ -219,6 +234,7 @@ def _time_converter(human_time: str) -> int:
     return int(human_time)
 
 
+@video_filter
 class VideoOverlay(Filter, Media):
     """Filter to overlay a video stream on a base video stream.
 
@@ -256,27 +272,20 @@ class VideoOverlay(Filter, Media):
         self.end_time = (
             self.start_time + 5 if end_time is None else _time_converter(end_time)
         )
-        self.image_index = None
 
     @property
     def path(self) -> str:
         return self.o_path
 
-    def set_id(self, id: int) -> None:
-        self.image_index = id
-
-    @property
-    def stream_type(self) -> str:
-        return "video"
-
     def apply(self) -> Template:
-        if self.image_index is None:
+        if self.media_id is None:
             raise RuntimeError(f"Insertion ID for image {self.path} was not set.")
         return Template(
-            f"[{self.image_index}:v]scale={self.size}:-2,format=rgba[img];[$input][img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})':alpha=premultiplied[$output];"
+            f"[{self.media_id}:v]scale={self.size}:-2,format=rgba[img];[$input][img]overlay={self.location}:enable='between(t,{self.start_time},{self.end_time})':alpha=premultiplied[$output];"
         )
 
 
+@video_filter
 class _VideoTrim(Filter):
     """Internal filter to trim a video stream (keep a segment)."""
 
@@ -284,16 +293,13 @@ class _VideoTrim(Filter):
         self.start_time = start_time
         self.end_time = end_time
 
-    @property
-    def stream_type(self) -> str:
-        return "video"
-
     def apply(self) -> Template:
         return Template(
             f"[$input]trim=start={self.start_time}:end={self.end_time},setpts=PTS-STARTPTS[$output];"
         )
 
 
+@audio_filter
 class _AudioTrim(Filter):
     """Internal filter to trim an audio stream (keep a segment)."""
 
@@ -301,16 +307,13 @@ class _AudioTrim(Filter):
         self.start_time = start_time
         self.end_time = end_time
 
-    @property
-    def stream_type(self) -> str:
-        return "audio"
-
     def apply(self) -> Template:
         return Template(
             f"[$input]atrim=start={self.start_time}:end={self.end_time},asetpts=PTS-STARTPTS[$output];"
         )
 
 
+@video_filter
 class _VideoCut(Filter):
     """Internal filter to cut (remove) a segment from a video stream."""
 
@@ -318,26 +321,19 @@ class _VideoCut(Filter):
         self.start_time = start_time
         self.end_time = end_time
 
-    @property
-    def stream_type(self) -> str:
-        return "video"
-
     def apply(self) -> Template:
         return Template(
             f"[$input]select='not(between(t,{self.start_time},{self.end_time}))',setpts=N/FRAME_RATE/TB[$output];"
         )
 
 
+@audio_filter
 class _AudioCut(Filter):
     """Internal filter to cut (remove) a segment from an audio stream."""
 
     def __init__(self, start_time: int, end_time: int):
         self.start_time = start_time
         self.end_time = end_time
-
-    @property
-    def stream_type(self) -> str:
-        return "audio"
 
     def apply(self) -> Template:
         return Template(
@@ -355,8 +351,8 @@ class Cut:
         """Create a pair of `_AudioCut` and `_VideoCut` filters.
 
         Args:
-            start_time: Start of the segment to remove (human‑readable).
-            end_time: End of the segment to remove (human‑readable).
+            start_time: Start of the segment to remove (human-readable).
+            end_time: End of the segment to remove (human-readable).
 
         Returns:
             A tuple `(_AudioCut, _VideoCut)`.
@@ -375,8 +371,8 @@ class Trim:
         """Create a pair of `_AudioTrim` and `_VideoTrim` filters.
 
         Args:
-            start_time: Start of the segment to keep (human‑readable).
-            end_time: End of the segment to keep (human‑readable).
+            start_time: Start of the segment to keep (human-readable).
+            end_time: End of the segment to keep (human-readable).
 
         Returns:
             A tuple `(_AudioTrim, _VideoTrim)`.
@@ -385,6 +381,7 @@ class Trim:
         return (_AudioTrim(s, e), _VideoTrim(s, e))
 
 
+@audio_filter
 class ChangeVolume(Filter):
     """Adjust the volume of an audio stream by a gain factor."""
 
@@ -396,14 +393,11 @@ class ChangeVolume(Filter):
         """
         self.volume = volume
 
-    @property
-    def stream_type(self) -> str:
-        return "audio"
-
     def apply(self) -> Template:
         return Template(f"[$input]volume={self.volume}[$output];")
 
 
+@video_filter
 class VideoAdjustments(Filter):
     """Adjust brightness, contrast, gamma, and saturation of a video stream."""
 
@@ -430,16 +424,13 @@ class VideoAdjustments(Filter):
         self.c = str(contrast) if contrast is not None else "1"
         self.s = str(saturation) if saturation is not None else "1"
 
-    @property
-    def stream_type(self) -> str:
-        return "video"
-
     def apply(self) -> Template:
         return Template(
             f"[$input]eq=brightness={self.b}:contrast={self.c}:gamma={self.g}:saturation={self.s}[$output];"
         )
 
 
+@audio_filter
 class NewAudio(Media, Filter):
     """Add a new audio track mixed with the existing audio.
 
@@ -459,28 +450,21 @@ class NewAudio(Media, Filter):
         """
         self.audio_path = audio_path
         self.volume = volume
-        self.stream_id = None
 
     @property
     def path(self) -> str:
         return self.audio_path
 
-    def set_id(self, id: int) -> None:
-        self.stream_id = id
-
-    @property
-    def stream_type(self) -> str:
-        return "audio"
-
     def apply(self) -> Template:
-        if self.stream_id is None:
+        if self.media_id is None:
             raise RuntimeError(f"Insertion ID for audio {self.path} was not set.")
         return Template(
-            f"[{self.stream_id}:a]volume={self.volume}[{self.stream_id}_edit];[$input][{self.stream_id}_edit]amix=inputs=2:duration=first[$output];"
+            f"[{self.media_id}:a]volume={self.volume}[{self.media_id}_edit];[$input][{self.media_id}_edit]amix=inputs=2:duration=first[$output];"
         )
 
 
-class InsertAudio(NewAudio):
+@audio_filter
+class InsertAudio(Filter, Media):
     """Insert an audio clip at a specific time range, mixed with the original.
 
     The clip is placed starting at `start_time` and lasts until `end_time`.
@@ -504,29 +488,28 @@ class InsertAudio(NewAudio):
         Note:
             The stream ID must be set via `set_id()` before `apply()` if used manually.
         """
-        super().__init__(audio_path, volume)
+        self.audio_path = audio_path
+        self.volume = volume
         self.start_time = _time_converter(start_time)
         self.end_time = _time_converter(end_time)
 
     def apply(self) -> Template:
-        if self.stream_id is None:
+        if self.media_id is None:
             raise RuntimeError(f"Insertion ID for audio {self.path} was not set.")
         return Template(
-            f"[{self.stream_id}:a]atrim=0:{self.end_time},adelay={self.start_time * 1000}:all=1,volume={self.volume}[{self.stream_id}_inserted];[$input][{self.stream_id}_inserted]amix=inputs=2:duration=first[$output];"
+            f"[{self.media_id}:a]atrim=0:{self.end_time},adelay={self.start_time * 1000}:all=1,volume={self.volume}[{self.media_id}_inserted];[$input][{self.media_id}_inserted]amix=inputs=2:duration=first[$output];"
         )
 
 
+@audio_filter
 class RemoveAudio(Filter):
     """Completely remove the original audio track (mute it)."""
 
     def apply(self) -> Template:
         return Template("[$input]volume=0[$output];")
 
-    @property
-    def stream_type(self) -> str:
-        return "audio"
 
-
+@audio_filter
 class MuteRange(Filter):
     """Mute the audio during a specific time range."""
 
@@ -540,16 +523,13 @@ class MuteRange(Filter):
         self.start_time = _time_converter(start_time)
         self.end_time = _time_converter(end_time)
 
-    @property
-    def stream_type(self) -> str:
-        return "audio"
-
     def apply(self) -> Template:
         return Template(
             f"[$input]volume=enable='between(t,{self.start_time},{self.end_time})':volume=0[$output];"
         )
 
 
+@video_filter
 class HardSubtitles(Filter):
     """Burn subtitles into the video."""
 
@@ -561,68 +541,30 @@ class HardSubtitles(Filter):
         """
         self.subtitles = subtitles_path
 
-    @property
-    def stream_type(self) -> str:
-        return "video"
-
     def apply(self) -> Template:
         return Template(f"[$input]subtitles={self.subtitles}[$output];")
 
 
-class _MixVideoStreams(Filter):
-    """Internal filter to overlay multiple video streams on a base canvas.
-
-    This is planned to be used by the `Pipe` system to combine several video inputs.
-    """
-
-    def __init__(self, streams: list[str]) -> None:
-        """Initialise a mixer for video streams.
-
-        Args:
-            streams: List of stream labels (e.g., `["0:v", "1:v"]`).
-        """
-        self.streams = streams
+@video_filter
+class _ChangeVideoSpeed(Filter):
+    def __init__(self, desired_speed: float) -> None:
+        self.speed = desired_speed**-1
 
     def apply(self) -> Template:
-        n = len(self.streams)
-        if n == 0:
-            return Template("[$input]null[$output];")
-
-        filter_parts = []
-        current = "$input"
-        for i, stream in enumerate(self.streams):
-            next_label = f"ov{i}"
-            filter_parts.append(f"[{current}][{stream}]overlay[{next_label}];")
-            current = next_label
-
-        filter_parts.append(f"[{current}]null[$output];")
-        return Template("".join(filter_parts))
-
-    @property
-    def stream_type(self) -> str:
-        return "video"
+        return Template(f"[$input]setpts={self.speed}*PTS[$output];")
 
 
-class _MixAudioStreams(Filter):
-    """Internal filter to mix multiple audio streams together.
-
-    This is planned to be used by the `Pipe` system to combine several video inputs.
-    """
-
-    def __init__(self, streams: list[str]) -> None:
-        """Initialise a mixer for audio streams.
-
-        Args:
-            streams: List of stream labels (e.g., `["0:a", "1:a"]`).
-        """
-        self.streams = streams
+@audio_filter
+class _ChangeAudioSpeed(Filter):
+    def __init__(self, desired_speed: float) -> None:
+        self.speed = desired_speed
 
     def apply(self) -> Template:
-        if len(self.streams) == 1:
-            return Template(f"[{self.streams[0]}]anull[$output];")
-        inputs = "".join(f"[{name}]" for name in self.streams)
-        return Template(f"{inputs}amix=inputs={len(self.streams)}[$output];")
+        return Template(f"[$input]atempo={self.speed}[$output];")
 
-    @property
-    def stream_type(self) -> str:
-        return "audio"
+
+class ChangeSpeed:
+    def __new__(
+        cls, desired_speed: float
+    ) -> tuple[_ChangeAudioSpeed, _ChangeVideoSpeed]:
+        return (_ChangeAudioSpeed(desired_speed), _ChangeVideoSpeed(desired_speed))
