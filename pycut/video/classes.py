@@ -204,7 +204,7 @@ class Filter(ABC):
 
 
 def _time_converter(human_time: str) -> int:
-    """Convert a human‑readable time string to seconds (integer).
+    """Convert a human readable time string to seconds (integer).
 
     Supported formats:
         - `"0:1:20"` → 80 seconds
@@ -482,8 +482,8 @@ class InsertAudio(Filter, Media):
         Args:
             audio_path: Path to the audio file.
             volume: Gain factor for the inserted clip.
-            start_time: When the clip starts (human‑readable).
-            end_time: When the clip ends (human‑readable).
+            start_time: When the clip starts (human readable).
+            end_time: When the clip ends (human readable).
 
         Note:
             The stream ID must be set via `set_id()` before `apply()` if used manually.
@@ -517,8 +517,8 @@ class MuteRange(Filter):
         """Initialise a mute range filter.
 
         Args:
-            start_time: Start of the mute period (human‑readable).
-            end_time: End of the mute period (human‑readable).
+            start_time: Start of the mute period (human readable).
+            end_time: End of the mute period (human readable).
         """
         self.start_time = _time_converter(start_time)
         self.end_time = _time_converter(end_time)

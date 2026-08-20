@@ -4,7 +4,7 @@ a Python video editing toolkit for tech nerds.
 pycut provides an abstraction over FFmpeg's filter graphs. It allows you
 to compose complex video/audio edits using simple, chainable filters without
 writing raw FFmpeg commands.
-Import speech modules manually.
+Import speech modules manually `pycut.speech`.
 
 Main features:
 - Declarative filter composition using `Pipe` and `Filter` abstractions.
@@ -23,7 +23,7 @@ Subpackages:
 """
 
 # Import core types and functions for easy access
-from pycut.jsons import is_serializable, serialize, unserialize
+from pycut.jsons import deserialize, is_serializable, serialize
 
 # from pycut.speech import transcribe_file, generate_srt, find_keywords
 from pycut.proj_funcs import generate_project
@@ -74,6 +74,7 @@ __all__ = [
     "audio_filter",
     "bake_filters",
     "compose",
+    "deserialize",
     "detect_silence_fragments",
     "digest_pillow",
     "generate_project",
@@ -81,6 +82,5 @@ __all__ = [
     "is_serializable",
     "render_text",
     "serialize",
-    "unserialize",
     "video_filter",
 ]

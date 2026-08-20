@@ -2,11 +2,11 @@
 JSON serialization utilities for `pycut`.
 
 This module provides simple functions to:
-- Test if a Python object is JSON‑serializable (`is_serializable`).
-- Safely write a JSON‑serializable object to a file (`serialize`).
+- Test if a Python object is JSON-serializable (`is_serializable`).
+- Safely write a JSON-serializable object to a file (`serialize`).
 - Load a JSON object from a file (`unserialize`).
 
-All errors are logged via the module logger and re‑raised for the caller to handle.
+All errors are logged via the module logger and re-raised for the caller to handle.
 """
 
 import json
@@ -27,7 +27,7 @@ def is_serializable(data: Any) -> bool:
         data: The object to test.
 
     Returns:
-        `True` if the object is JSON‑serializable, otherwise `False`.
+        `True` if the object is JSON serializable, otherwise `False`.
     """
     try:
         json.dumps(data)
@@ -52,6 +52,7 @@ def serialize(data: Any, json_path: str) -> None:
     file = Path(json_path)
     if not is_serializable(data):
         LOGGER.error("Serialization failed for data. It's not serializable.")
+        return
     try:
         file.touch(exist_ok=True)  # create parent directories if needed?
         # Note: Path.touch() does not create parent directories; we may want to ensure they exist.
@@ -64,7 +65,7 @@ def serialize(data: Any, json_path: str) -> None:
         raise
 
 
-def unserialize(json_path: str) -> Any:
+def deserialize(json_path: str) -> Any:
     """Load and parse a JSON object from a file.
 
     Args:

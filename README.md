@@ -2,11 +2,13 @@
 
 Video redacting library built on top of ffmpeg, whisper and opencv for the nerds.
 
-# Roadmanp
+It was built for personal usage, but I decided to make it open-source from the start.
 
-## Before 1.0.0 release
+# Dependencies
 
-### Ready to use features
+- ffmpeg (specific version to be specified)
+
+## Current features
 
 - Speech recognition
 - Automatic subtitles (srt) generation
@@ -15,6 +17,16 @@ Video redacting library built on top of ffmpeg, whisper and opencv for the nerds
 - Integration with Pillow
 - Wrapper around scenedetect
 
-### Planned features
+# Roadmanp
 
-- Animations
+## Planned features
+
+- Transition effects
+- Track based editing
+- Tests for code
+
+# How to use
+
+1. Install latest release file in your environment.
+2. Use `pycut help` for onboarding information
+3. Use simple `python video_script.py` to render videos.

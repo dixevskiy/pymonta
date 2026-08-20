@@ -1,5 +1,5 @@
 """
-Command‑line interface for `pycut`.
+Command line interface for `pycut`.
 
 This module provides the entry point for the `pycut` CLI. It exposes two
 subcommands:
@@ -44,6 +44,7 @@ def main() -> None:
     )
     subparsers.add_parser("init", help="initialize a project")
     subparsers.add_parser("version", help="get version of pycut")
+    subparsers.add_parser("help", help="get basic information about how to use library")
     args = parser.parse_args()
 
     if args.command == "init":
@@ -53,6 +54,11 @@ def main() -> None:
 
     if args.command == "version":
         print(f"You are using pycut version {importlib.metadata.version('pycut')}")
+
+    if args.command == "help":
+        print(
+            "Pycut is a tool library for video editing with Python\nHow to use it:\n0. Install pycut\n1. Create a project with pycut init\n2. Check out generated video_script.py\n3. Import the lib and use help(pycut) to know more\n4. Edit video_script.py accordingly\n5. Run python video_script.py to render video"
+        )
 
 
 if __name__ == "__main__":

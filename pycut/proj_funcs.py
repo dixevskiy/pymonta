@@ -14,9 +14,8 @@ The default script includes:
 """
 
 from pathlib import Path
-from string import Template
 
-DEFAULT_SCRIPT = Template("""
+DEFAULT_SCRIPT = """
 # This is a python script! Yes, you can edit videos with Python now!
 # Moreover, you can modify and interfere with the mere lib you using to edit videos.
 # Let me create some basic stuff for you...
@@ -37,7 +36,7 @@ logging.basicConfig(
 
 video_filters = [
     *Trim("5s", "20s"),
-    VideoOverlay("10s", render_text("Hello world!"), Locations.CENTER)
+    VideoOverlay(render_text("Hello world!"), "10s", Locations.CENTER)
 ]
 
 async def main():
@@ -45,7 +44,9 @@ async def main():
     await ffmpeg.execute()
 
 asyncio.run(main())
-""")
+
+# If you want to share your editing workflow with others you should zip all files, including video_script.py
+"""
 
 
 def generate_project(proj_dir: str) -> None:
@@ -74,4 +75,4 @@ def generate_project(proj_dir: str) -> None:
     paths = proj_path / "baked"
     paths.mkdir(exist_ok=True)
     with open(proj_path / "video_script.py", "w+") as f:
-        f.write(DEFAULT_SCRIPT.safe_substitute(proj_path=proj_path))
+        f.write(DEFAULT_SCRIPT)

@@ -5,6 +5,8 @@ This module provides highlevel functions to:
 - Detect silence intervals in a video file.
 - Retrieve video duration.
 - Compose video and audio streams with custom filters (e.g., overlays, mixing).
+- Bake filters results.
+- Render texts and pillow images.
 
 It relies on the `pycut.video.classes` module for `Filter`, `Media`, and `Pipe`
 abstractions, and uses `ffmpeg.asyncio` for asynchronous processing.
@@ -128,65 +130,6 @@ async def get_duration(video_path: str) -> int:
     frames = v.get(cv2.CAP_PROP_FRAME_COUNT)
     fps = v.get(cv2.CAP_PROP_FPS)
     return round(frames / fps)
-
-
-# Scheduled for rewriting (kept for reference)
-# def compose_piped(
-#     video_path: str,
-#     output_path: str,
-#     video_pipes: Sequence[Pipe],
-#     audio_pipes: Sequence[Pipe],
-#     **ffmpeg_output_args,
-# ) -> FFmpeg:
-
-#     LOGGER.info(f"Starting piped composition process for {video_path}.")
-
-#     if Path(output_path).exists():
-#         raise RuntimeError(
-#             "Output file already exists! Handle it manually. Halting video composing."
-#         )
-
-#     ffmpeg = FFmpeg().input(video_path)
-
-#     @ffmpeg.on("progress")
-#     def on_progress(progress: Progress):
-#         LOGGER.info(
-#             f"Working on {progress.frame} frame, current fps = {progress.fps}, output size: ~{progress.size / 1024 / 1024}MB"
-#         )
-
-#     for pipe in chain(video_pipes, audio_pipes):
-#         for path in pipe.get_all_media_paths():
-#             ffmpeg.input(path)
-
-#     output_video_streams = [pipe.output for pipe in video_pipes]
-#     last_stream_name = video_pipes[$outpu-2t].stream_name
-#     vout = Pipe("vout").join(
-#         Pipe(last_stream_name, _MixVideoStreams(output_video_streams))
-#     )
-#     video_filters = (
-#         "".join([pipe.combine_filter() for pipe in video_pipes]) + vout.combine_filter()
-#     )
-
-#     output_audio_streams = [pipe.output for pipe in audio_pipes]
-#     aout = Pipe("aout").join(Pipe("", _MixAudioStreams(output_audio_streams)))
-#     audio_filters = (
-#         "".join([pipe.combine_filter() for pipe in audio_pipes]) + aout.combine_filter()
-#     )
-
-#     filters = video_filters + audio_filters
-
-#     LOGGER.debug(
-#         f"Recieved: {len(video_pipes)} video pipes and {len(audio_pipes)} audio pipes.\nComposed to {filters}. \nStream name for glueing used: {last_stream_name}\n Custom ffmpeg args is: {ffmpeg_output_args}"
-#     )
-
-#     ffmpeg = ffmpeg.output(
-#         output_path,
-#         acodec="aac",
-#         filter_complex=filters,
-#         map=["[vout]", "[aout]"],
-#         **ffmpeg_output_args,
-#     )
-#     return ffmpeg
 
 
 # Used for correct automatic ID assignment for additional Media instances.
@@ -317,7 +260,7 @@ def render_text(
     wraplength: int = 32,
 ) -> str:
     """
-    Render text to a PNG image with transparent background, with caching.
+    Render text to a PNG image with transparent background and caching.
 
     This function creates an image containing the specified text, sized exactly
     to fit the text (with small padding). Images are cached in a `texts/`
@@ -342,17 +285,6 @@ def render_text(
 
     Returns:
         Absolute path to the generated (or cached) PNG image file.
-
-    Example:
-        >>> img_path = render_text(
-        ...     "Hello, World!",
-        ...     "./my_project",
-        ...     font_size=48,
-        ...     color="#FFD700",
-        ...     wraplength=20
-        ... )
-        >>> print(img_path)
-        './my_project/texts/abcde12345...png'
 
     Note:
         - Manual newlines (`\\n`) are preserved and override automatic wrapping.
@@ -424,7 +356,15 @@ def digest_pillow(
     """
     Function for custom pillow images support.
 
-    Use it with VideoOverlay() when you want to display raw Pillow image on video.
+    Supports chaining with `VideoOverlay()`.
+
+    If same pillow image was given, function will return path to cached version.
+
+    Args:
+        - pillow_image: raw pil image class which you are willing to use in video
+
+    Note:
+        - sha1 used for caching.
     """
     project_path = Path.cwd()
     cache_dir = project_path / "pimgs"
@@ -455,7 +395,7 @@ def detect_scenes(video_path: str, threshold: int = 27) -> list[tuple[float, flo
     Wrapper around scenedetect library
 
     Returns:
-        list of tuples with floats which represent time of start and end of scene in seconds.
+        - list of tuples with floats which represent time of start and end of scene in seconds.
     """
     scene_list = detect(video_path, ContentDetector(threshold))
     res = []
@@ -468,8 +408,11 @@ def bake_filters(input_file: str, filters: Sequence[Filter]) -> str:
     """
     Applies filters to input_file and saves baked result.
 
+    Supports chaining with `VideoOverlay()`.
+
     Returns:
         - path of baked result
+
     Note:
         - If given same input_file and filters then previous baked result reused.
         - sha1 hashing used for path generation.
@@ -482,7 +425,7 @@ def bake_filters(input_file: str, filters: Sequence[Filter]) -> str:
     if save_path.exists():
         LOGGER.debug(f"Cache hit: {save_path}")
         return str(save_path)
-    LOGGER.debug(
+    LOGGER.info(
         f"Starting baking process for {input_file}.\n-extension: {input_ext}\n-unquie_hash: {hash}\n-save_path:{save_path}"
     )
     save_path.parent.mkdir(parents=True, exist_ok=True)
