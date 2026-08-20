@@ -1,5 +1,5 @@
 """
-JSON serialization utilities for `pycut`.
+JSON serialization utilities for `pymonta`.
 
 This module provides simple functions to:
 - Test if a Python object is JSON-serializable (`is_serializable`).

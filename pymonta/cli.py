@@ -1,19 +1,19 @@
 """
-Command line interface for `pycut`.
+Command line interface for `pymonta`.
 
-This module provides the entry point for the `pycut` CLI. It exposes two
+This module provides the entry point for the `pymonta` CLI. It exposes two
 subcommands:
 - `init` : Creates a new project structure at the specified path.
-- `version` : Prints the installed version of `pycut`.
+- `version` : Prints the installed version of `pymonta`.
 
-The actual project generation is delegated to `pycut.proj_funcs.generate_project`.
+The actual project generation is delegated to `pymonta.proj_funcs.generate_project`.
 """
 
 import argparse
 import importlib.metadata
 from pathlib import Path
 
-from pycut.proj_funcs import generate_project
+from pymonta.proj_funcs import generate_project
 
 
 def main() -> None:
@@ -34,7 +34,7 @@ def main() -> None:
             will propagate to the caller.
     """
     parser = argparse.ArgumentParser(
-        "pycut", description="video editing tool for tech nerds"
+        "pymonta", description="video editing tool for tech nerds"
     )
     parser.add_argument(
         "-p", "--proj_path", help="specify project root directory", type=str
@@ -43,7 +43,7 @@ def main() -> None:
         dest="command", required=True, metavar="<COMMAND>"
     )
     subparsers.add_parser("init", help="initialize a project")
-    subparsers.add_parser("version", help="get version of pycut")
+    subparsers.add_parser("version", help="get version of pymonta")
     subparsers.add_parser("help", help="get basic information about how to use library")
     args = parser.parse_args()
 
@@ -53,11 +53,11 @@ def main() -> None:
         print(f"Created a project at {proj_path} for you!")
 
     if args.command == "version":
-        print(f"You are using pycut version {importlib.metadata.version('pycut')}")
+        print(f"You are using pymonta version {importlib.metadata.version('pymonta')}")
 
     if args.command == "help":
         print(
-            "Pycut is a tool library for video editing with Python\nHow to use it:\n0. Install pycut\n1. Create a project with pycut init\n2. Check out generated video_script.py\n3. Import the lib and use help(pycut) to know more\n4. Edit video_script.py accordingly\n5. Run python video_script.py to render video"
+            "pymonta is a tool library for video editing with Python\nHow to use it:\n0. Install pymonta\n1. Create a project with pymonta init\n2. Check out generated video_script.py\n3. Import the lib and use help(pymonta) to know more\n4. Edit video_script.py accordingly\n5. Run python video_script.py to render video"
         )
 
 

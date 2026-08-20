@@ -1,4 +1,6 @@
-# pycut
+#pymonta
+
+> Python Montage
 
 Video redacting library built on top of ffmpeg, whisper and opencv for the nerds.
 
@@ -28,5 +30,5 @@ It was built for personal usage, but I decided to make it open-source from the s
 # How to use
 
 1. Install latest release file in your environment.
-2. Use `pycut help` for onboarding information
+2. Use `pymonta help` for onboarding information
 3. Use simple `python video_script.py` to render videos.

@@ -8,7 +8,7 @@ This module provides highlevel functions to:
 - Bake filters results.
 - Render texts and pillow images.
 
-It relies on the `pycut.video.classes` module for `Filter`, `Media`, and `Pipe`
+It relies on the `pymonta.video.classes` module for `Filter`, `Media`, and `Pipe`
 abstractions, and uses `ffmpeg.asyncio` for asynchronous processing.
 """
 
@@ -26,7 +26,7 @@ from ffmpeg.progress import Progress
 from PIL import Image, ImageDraw, ImageFont
 from scenedetect import ContentDetector, detect
 
-from pycut.video.classes import (
+from pymonta.video.classes import (
     Filter,
     Media,
     Pipe,

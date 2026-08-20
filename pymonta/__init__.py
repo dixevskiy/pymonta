@@ -1,10 +1,10 @@
 """
 a Python video editing toolkit for tech nerds.
 
-pycut provides an abstraction over FFmpeg's filter graphs. It allows you
+pymonta provides an abstraction over FFmpeg's filter graphs. It allows you
 to compose complex video/audio edits using simple, chainable filters without
 writing raw FFmpeg commands.
-Import speech modules manually `pycut.speech`.
+Import speech modules manually `pymonta.speech`.
 
 Main features:
 - Declarative filter composition using `Pipe` and `Filter` abstractions.
@@ -15,19 +15,19 @@ Main features:
 - Project initialisation via CLI to get started quickly.
 
 Subpackages:
-- `pycut.video.classes` : Core classes
-- `pycut.video.functions` : High-level functions
-- `pycut.jsons` : JSON helpers
-- `pycut.speech` : Whisper transcription
-- `pycut.proj_funcs` : Project generator
+- `pymonta.video.classes` : Core classes
+- `pymonta.video.functions` : High-level functions
+- `pymonta.jsons` : JSON helpers
+- `pymonta.speech` : Whisper transcription
+- `pymonta.proj_funcs` : Project generator
 """
 
 # Import core types and functions for easy access
-from pycut.jsons import deserialize, is_serializable, serialize
+from pymonta.jsons import deserialize, is_serializable, serialize
 
-# from pycut.speech import transcribe_file, generate_srt, find_keywords
-from pycut.proj_funcs import generate_project
-from pycut.video.classes import (
+# from pymonta.speech import transcribe_file, generate_srt, find_keywords
+from pymonta.proj_funcs import generate_project
+from pymonta.video.classes import (
     ChangeSpeed,
     ChangeVolume,
     Cut,
@@ -46,7 +46,7 @@ from pycut.video.classes import (
     audio_filter,
     video_filter,
 )
-from pycut.video.functions import (
+from pymonta.video.functions import (
     bake_filters,
     compose,
     detect_silence_fragments,

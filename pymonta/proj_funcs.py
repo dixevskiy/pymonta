@@ -1,13 +1,13 @@
 """
-Project initialisation for `pycut`.
+Project initialisation for `pymonta`.
 
 This module provides the `generate_project` function, which creates a new
 project directory and populates it with a default Python script (`video_script.py`).
-The script contains a basic example that demonstrates how to use `pycut` to
+The script contains a basic example that demonstrates how to use `pymonta` to
 edit a video.
 
 The default script includes:
-- Imports for all core `pycut` modules.
+- Imports for all core `pymonta` modules.
 - Logging configuration.
 - A sample video edit (trimming the first 10 seconds).
 - An `edit()` coroutine that calls `compose()` and executes the FFmpeg pipeline.
@@ -23,10 +23,10 @@ DEFAULT_SCRIPT = """
 import logging
 import sys
 import asyncio
-from pycut import compose, Trim, VideoOverlay, Locations, render_text
+from pymonta import compose, Trim, VideoOverlay, Locations, render_text
 
 # For information use docstrings from the lib.
-# help(pycut)
+# help(pymonta)
 
 logging.basicConfig(
     level=logging.INFO,  
@@ -50,7 +50,7 @@ asyncio.run(main())
 
 
 def generate_project(proj_dir: str) -> None:
-    """Create a new `pycut` project directory with a default editing script.
+    """Create a new `pymonta` project directory with a default editing script.
 
     The function creates the specified directory (and any missing parent
     directories) and writes a `video_script.py` file containing a ready-to-run

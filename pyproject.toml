@@ -1,5 +1,5 @@
 [project]
-name = "pycut"
+name = "pymonta"
 version = "1.0.0"
 description = "Video editing library for nerds"
 readme = "README.md"
@@ -13,8 +13,8 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://codeberg.org/dixevskiy/pycut"
-"Bug Tracker" = "https://codeberg.org/dixevskiy/pycut/issues"
+"Homepage" = "https://codeberg.org/dixevskiy/pymonta"
+"Bug Tracker" = "https://codeberg.org/dixevskiy/pymonta/issues"
 
 
 [dependency-groups]
@@ -23,4 +23,4 @@ dev = [
 ]
 
 [project.scripts]
-pycut = "pycut.cli:main"
+pymonta = "pymonta.cli:main"
