@@ -15,6 +15,8 @@ module, building a filter_complex string via `Pipe.combine_filter()`.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
 from string import Template
 
@@ -36,6 +38,74 @@ class Locations(Enum):
     HORIZONTAL_DOWN = "x=(W-w)/2:y=(H-h)/2+(H-h)/3"
 
 
+from enum import Enum
+
+
+class TransitionMethod(Enum):
+    """
+    Enum for all FFmpeg xfade transition names.
+    """
+
+    FADE = "fade"
+    WIPELEFT = "wipeleft"
+    WIPERIGHT = "wiperight"
+    WIPEUP = "wipeup"
+    WIPEDOWN = "wipedown"
+    SLIDELEFT = "slideleft"
+    SLIDERIGHT = "slideright"
+    SLIDEUP = "slideup"
+    SLIDEDOWN = "slidedown"
+    CIRCLECROP = "circlecrop"
+    RECTCROP = "rectcrop"
+    DISTANCE = "distance"
+    FADEBLACK = "fadeblack"
+    FADEWHITE = "fadewhite"
+    RADIAL = "radial"
+    SMOOTHLEFT = "smoothleft"
+    SMOOTHRIGHT = "smoothright"
+    SMOOTHUP = "smoothup"
+    SMOOTHDOWN = "smoothdown"
+    CIRCLEOPEN = "circleopen"
+    CIRCLECLOSE = "circleclose"
+    VERTOPEN = "vertopen"
+    VERTCLOSE = "vertclose"
+    HORZOPEN = "horzopen"
+    HORZCLOSE = "horzclose"
+    DISSOLVE = "dissolve"
+    PIXELIZE = "pixelize"
+    DIAGTL = "diagtl"
+    DIAGTR = "diagtr"
+    DIAGBL = "diagbl"
+    DIAGBR = "diagbr"
+    HLSLICE = "hlslice"
+    HRSLICE = "hrslice"
+    VUSLICE = "vuslice"
+    VDSLICE = "vdslice"
+    HBLUR = "hblur"
+    FADEGRAYS = "fadegrays"
+    WIPETL = "wipetl"
+    WIPETR = "wipetr"
+    WIPEBL = "wipebl"
+    WIPEBR = "wipebr"
+    SQUEEZEH = "squeezeh"
+    SQUEEZEV = "squeezev"
+    ZOOMIN = "zoomin"
+    FADEFAST = "fadefast"
+    FADESLOW = "fadeslow"
+    HLWIND = "hlwind"
+    HRWIND = "hrwind"
+    VUWIND = "vuwind"
+    VDWIND = "vdwind"
+    COVERLEFT = "coverleft"
+    COVERRIGHT = "coverright"
+    COVERUP = "coverup"
+    COVERDOWN = "coverdown"
+    REVEALLEFT = "revealleft"
+    REVEALRIGHT = "revealright"
+    REVEALUP = "revealup"
+    REVEALDOWN = "revealdown"
+
+
 class Pipe:
     """A node in a filter graph, representing a stream with optional filters.
 
@@ -44,7 +114,7 @@ class Pipe:
     complete filter string by chaining `.apply()` outputs.
 
     Attributes:
-        stream_name (str): The label for this pipe (e.g., `"vout"`).
+        pipe_name (str): The label for this pipe (e.g., `"vout"`).
         filter (Filter | None): The filter applied at this node.
         _input_pipe (Pipe | None): The preceding pipe in the chain.
         _output_pipe (Pipe | None): The following pipe in the chain.
@@ -52,7 +122,7 @@ class Pipe:
 
     def __init__(
         self,
-        stream_name: str,
+        pipe_name: str,
         filter: Filter | None = None,
         input_pipe: Pipe | None = None,
         output_pipe: Pipe | None = None,
@@ -70,7 +140,7 @@ class Pipe:
             links are established automatically.
         """
         self.filter = filter
-        self.stream_name = stream_name
+        self.stream_name = pipe_name
         self._input_pipe = input_pipe
         self._output_pipe = output_pipe
 
@@ -103,7 +173,7 @@ class Pipe:
             return self._output_pipe.output
         return self.stream_name
 
-    def combine_filter(self) -> str:
+    def compile_filter(self) -> str:
         """Recursively build the filter string for this pipe and all subsequent pipes.
 
         Returns:
@@ -117,7 +187,7 @@ class Pipe:
             }
             res = self.filter.apply().safe_substitute(**placeholders)
         if self._output_pipe:
-            res += self._output_pipe.combine_filter()
+            res += self._output_pipe.compile_filter()
         return res
 
     def join(self, pipe: Pipe) -> Pipe:
@@ -341,46 +411,6 @@ class _AudioCut(Filter):
         )
 
 
-class Cut:
-    """Factory that returns a tuple of audio and video cut filters.
-
-    The returned filters remove the specified time range from both streams.
-    """
-
-    def __new__(cls, start_time: str, end_time: str) -> tuple[_AudioCut, _VideoCut]:
-        """Create a pair of `_AudioCut` and `_VideoCut` filters.
-
-        Args:
-            start_time: Start of the segment to remove (human-readable).
-            end_time: End of the segment to remove (human-readable).
-
-        Returns:
-            A tuple `(_AudioCut, _VideoCut)`.
-        """
-        s, e = _time_converter(start_time), _time_converter(end_time)
-        return (_AudioCut(s, e), _VideoCut(s, e))
-
-
-class Trim:
-    """Factory that returns a tuple of audio and video trim filters.
-
-    The returned filters keep only the specified time range.
-    """
-
-    def __new__(cls, start_time: str, end_time: str) -> tuple[_AudioTrim, _VideoTrim]:
-        """Create a pair of `_AudioTrim` and `_VideoTrim` filters.
-
-        Args:
-            start_time: Start of the segment to keep (human-readable).
-            end_time: End of the segment to keep (human-readable).
-
-        Returns:
-            A tuple `(_AudioTrim, _VideoTrim)`.
-        """
-        s, e = _time_converter(start_time), _time_converter(end_time)
-        return (_AudioTrim(s, e), _VideoTrim(s, e))
-
-
 @audio_filter
 class ChangeVolume(Filter):
     """Adjust the volume of an audio stream by a gain factor."""
@@ -563,8 +593,64 @@ class _ChangeAudioSpeed(Filter):
         return Template(f"[$input]atempo={self.speed}[$output];")
 
 
-class ChangeSpeed:
-    def __new__(
-        cls, desired_speed: float
-    ) -> tuple[_ChangeAudioSpeed, _ChangeVideoSpeed]:
-        return (_ChangeAudioSpeed(desired_speed), _ChangeVideoSpeed(desired_speed))
+@video_filter
+class _VideoConcat(Filter, Media):
+    def __init__(self, joining_video: str) -> None:
+        self.join_path = joining_video
+
+    def apply(self) -> Template:
+        return Template(f"[$input][{self.media_id}:v]concat=n=2:v=1:a=0[$output];")
+
+    def _send_id(self):
+        return self.media_id
+
+    @property
+    def path(self) -> str:
+        return self.join_path
+
+
+@audio_filter
+class _AudioConcat(Filter):
+    def __init__(self, id_hook: Callable[[], int]) -> None:
+        self.get_id = id_hook
+
+    def apply(self) -> Template:
+        return Template(f"[$input][{self.get_id()}:a]concat=n=2:v=0:a=1[$output];")
+
+
+@video_filter
+class _VideoTransition(Filter, Media):
+    def __init__(self, joining_video: str, meta: _TransitionMeta) -> None:
+        self.join_path = joining_video
+        self.meta = meta
+
+    def apply(self) -> Template:
+        return Template(
+            f"[$input][{self.media_id}:v]xfade=transition={self.meta.method.value}:duration={self.meta.duration}:offset={self.meta.first_video_duration - self.meta.duration - 1}[$output];"
+        )
+
+    def _send_id(self):
+        return self.media_id
+
+    @property
+    def path(self) -> str:
+        return self.join_path
+
+
+@audio_filter
+class _AudioTransition(Filter):
+    def __init__(self, id_hook: Callable[[], int], meta: _TransitionMeta) -> None:
+        self.get_id = id_hook
+        self.meta = meta
+
+    def apply(self) -> Template:
+        return Template(
+            f"[$input][{self.get_id()}:a]acrossfade=d={self.meta.duration}[$output];"
+        )
+
+
+@dataclass
+class _TransitionMeta:
+    method: TransitionMethod
+    duration: float
+    first_video_duration: int

@@ -27,10 +27,18 @@ from pymonta.jsons import deserialize, is_serializable, serialize
 
 # from pymonta.speech import transcribe_file, generate_srt, find_keywords
 from pymonta.proj_funcs import generate_project
-from pymonta.video.classes import (
-    ChangeSpeed,
-    ChangeVolume,
+from pymonta.video.abstractions import (
+    Clip,
+    ClipConcat,
+    ClipSpeed,
+    ClipTransition,
     Cut,
+    Scene,
+    Trim,
+    Video,
+)
+from pymonta.video.filters import (
+    ChangeVolume,
     Filter,
     HardSubtitles,
     InsertAudio,
@@ -40,7 +48,6 @@ from pymonta.video.classes import (
     NewAudio,
     Pipe,
     RemoveAudio,
-    Trim,
     VideoAdjustments,
     VideoOverlay,
     audio_filter,
@@ -56,8 +63,11 @@ from pymonta.video.functions import (
 )
 
 __all__ = [
-    "ChangeSpeed",
     "ChangeVolume",
+    "Clip",
+    "ClipConcat",
+    "ClipSpeed",
+    "ClipTransition",
     "Cut",
     "Filter",
     "HardSubtitles",
@@ -68,7 +78,9 @@ __all__ = [
     "NewAudio",
     "Pipe",
     "RemoveAudio",
+    "Scene",
     "Trim",
+    "Video",
     "VideoAdjustments",
     "VideoOverlay",
     "audio_filter",

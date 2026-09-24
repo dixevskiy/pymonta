@@ -26,7 +26,7 @@ from ffmpeg.progress import Progress
 from PIL import Image, ImageDraw, ImageFont
 from scenedetect import ContentDetector, detect
 
-from pymonta.video.classes import (
+from pymonta.video.filters import (
     Filter,
     Media,
     Pipe,
@@ -111,7 +111,7 @@ def _parse_silence_metadata(filepath: str) -> list[tuple[float, float]]:
     return silences
 
 
-async def get_duration(video_path: str) -> int:
+def get_duration(video_path: str) -> int:
     """Retrieve the duration of a video in whole seconds using OpenCV.
 
     The duration is computed as total frame count divided by frames per second,
@@ -130,11 +130,6 @@ async def get_duration(video_path: str) -> int:
     frames = v.get(cv2.CAP_PROP_FRAME_COUNT)
     fps = v.get(cv2.CAP_PROP_FPS)
     return round(frames / fps)
-
-
-# Used for correct automatic ID assignment for additional Media instances.
-# Starts from 1 because the main video feed has ID 0.
-_ids = count(1)
 
 
 def build_pipelines(filters: Sequence[Filter]) -> tuple[Pipe, Pipe]:
@@ -200,11 +195,11 @@ def compose(
           starting from 1.
         - The filter order matters.
     """
-    if not ffmpeg_output_flags:
-        LOGGER.info(
-            "No custom ffmpeg output flags provided, using predefined defaults."
-        )
-        ffmpeg_output_flags.update({"c:v": "libx264"})
+
+    # Used for correct automatic ID assignment for additional Media instances.
+    # Starts from 1 because the main video feed has ID 0.
+    _ids = count(1)
+
     if Path(output_path).exists():
         raise RuntimeError(
             "Output file already exists! Handle it manually. Halting video composing."
@@ -216,6 +211,7 @@ def compose(
     for filter in filters:
         if isinstance(filter, Media):
             ffmpeg.input(filter.path)
+            LOGGER.debug(f"Input file: {filter.path}")
             filter.set_id(next(_ids))
 
     vout, aout = build_pipelines(filters)
@@ -227,7 +223,7 @@ def compose(
     astream = "[aout]" if audio_changed else "0:a"
     vstream = "[vout]" if video_changed else "0:v"
 
-    filter_complex = f"{vout.combine_filter()}{aout.combine_filter()}"
+    filter_complex = f"{vout.compile_filter()}{aout.compile_filter()}"
 
     LOGGER.debug(
         f"filter: {filter_complex}\n- video_output:{vstream}\n- audio_output:{astream}, audio_codec:{acodec}"

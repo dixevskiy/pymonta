@@ -22,28 +22,28 @@ DEFAULT_SCRIPT = """
 
 import logging
 import sys
-import asyncio
-from pymonta import compose, Trim, VideoOverlay, Locations, render_text
+
+from pymonta import Clip, Locations, Scene, Trim, VideoOverlay, render_text
 
 # For information use docstrings from the lib.
 # help(pymonta)
 
 logging.basicConfig(
-    level=logging.INFO,  
-    format="%(name)s - %(levelname)s - %(message)s", 
+    level=logging.INFO,
+    format="%(name)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
 
 video_filters = [
     *Trim("5s", "20s"),
-    VideoOverlay(render_text("Hello world!"), "10s", Locations.CENTER)
+    VideoOverlay(render_text("Hello world!"), "10s", Locations.CENTER),
 ]
 
-async def main():
-    ffmpeg = compose("input.mp4", "output.mp4", video_filters)
-    await ffmpeg.execute()
+clip1 = Clip("input.mp4", video_filters)
 
-asyncio.run(main())
+scene = Scene(clip1)
+
+scene.render("output.mp4")
 
 # If you want to share your editing workflow with others you should zip all files, including video_script.py
 """
