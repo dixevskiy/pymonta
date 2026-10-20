@@ -16,15 +16,14 @@ import asyncio
 import hashlib
 import logging
 import re
+import subprocess
 from collections.abc import Sequence
 from itertools import count
 from pathlib import Path
 
-import cv2
 from ffmpeg.asyncio import FFmpeg
 from ffmpeg.progress import Progress
 from PIL import Image, ImageDraw, ImageFont
-from scenedetect import ContentDetector, detect
 
 from pymonta.video.filters import (
     Filter,
@@ -112,24 +111,29 @@ def _parse_silence_metadata(filepath: str) -> list[tuple[float, float]]:
 
 
 def get_duration(video_path: str) -> int:
-    """Retrieve the duration of a video in whole seconds using OpenCV.
-
-    The duration is computed as total frame count divided by frames per second,
-    rounded to the nearest integer.
+    """Retrieve the duration of a video in whole seconds using FFprobe.
 
     Args:
         video_path: Path to the video file.
 
     Returns:
         Duration in seconds (integer).
-
-    Raises:
-        cv2.error: If the video cannot be opened.
     """
-    v = cv2.VideoCapture(video_path)
-    frames = v.get(cv2.CAP_PROP_FRAME_COUNT)
-    fps = v.get(cv2.CAP_PROP_FPS)
-    return round(frames / fps)
+    res = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            video_path,
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return round(float(res.stdout.decode("utf-8")))
 
 
 def build_pipelines(filters: Sequence[Filter]) -> tuple[Pipe, Pipe]:
@@ -384,20 +388,6 @@ def digest_pillow(
     pillow_image.save(output_path)
     LOGGER.info(f"Cached image: {output_path}")
     return str(output_path)
-
-
-def detect_scenes(video_path: str, threshold: int = 27) -> list[tuple[float, float]]:
-    """
-    Wrapper around scenedetect library
-
-    Returns:
-        - list of tuples with floats which represent time of start and end of scene in seconds.
-    """
-    scene_list = detect(video_path, ContentDetector(threshold))
-    res = []
-    for scene in scene_list:
-        res.append((scene[0].get_seconds(), scene[1].get_seconds()))
-    return res
 
 
 def bake_filters(input_file: str, filters: Sequence[Filter]) -> str:

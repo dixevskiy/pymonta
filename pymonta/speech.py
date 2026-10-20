@@ -11,6 +11,7 @@ timestamps to OpenAI's Whisper.
 """
 
 import logging
+import sys
 from collections.abc import Sequence
 from fnmatch import fnmatch
 from typing import Any
@@ -18,6 +19,10 @@ from typing import Any
 import whisper_timestamped as whisper
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _is_whisper_installed():
+    return "whisper_timestamped" in sys.modules
 
 
 def transcribe_file(
@@ -47,6 +52,11 @@ def transcribe_file(
         FileNotFoundError: If `file_path` does not exist.
         RuntimeError: If the model fails to load or transcribe.
     """
+    if not _is_whisper_installed():
+        raise ModuleNotFoundError(
+            "Whisper is an optional dependency. You can install it with pip install pymonta[speech]"
+        )
+
     LOGGER.info("Starting video transcribing process... This can take a while.")
     model = whisper.load_model(model_size)
     result = model.transcribe(file_path, language=language)
