@@ -1,3 +1,7 @@
+"""
+To-do documentation
+"""
+
 import shutil
 from collections.abc import Sequence
 from pathlib import Path

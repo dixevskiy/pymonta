@@ -14,6 +14,7 @@ The classes are designed to work with the `compose` function from the main
 module, building a filter_complex string via `Pipe.combine_filter()`.
 """
 
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -277,7 +278,6 @@ def _time_converter(human_time: str) -> int:
     """Convert a human readable time string to seconds (integer).
 
     Supported formats:
-        - `"0:1:20"` → 80 seconds
         - `"1m20s"` → 80 seconds
         - `"1h2m3s"` → 3723 seconds
         - `"80"` → 80 seconds
@@ -291,17 +291,18 @@ def _time_converter(human_time: str) -> int:
     Raises:
         ValueError: If the format is unrecognised.
     """
-    human_time = human_time.replace("s", "")
-    if ":" in human_time:
-        hours, min, sec = human_time.split(":")
-        return int(hours) * 3600 + int(min) * 60 + int(sec)
-    if "m" in human_time and "h" not in human_time:
-        min, sec = human_time.split("m")
-        return int(min) * 60 + int(sec)
-    if "h" in human_time:
-        hours, min, sec = human_time.replace("h", ":").replace("m", ":").split(":")
-        return int(hours) * 3600 + int(min) * 60 + int(sec)
-    return int(human_time)
+    finded = re.search(r"(\d*h)*(\d*m)*(\d*)s*", human_time)
+    hours_str = finded.group(1)
+    mins_str = finded.group(2)
+    secs_str = finded.group(3)
+    hours, mins, secs = 0, 0, 0
+    if hours_str:
+        hours = int(hours_str.replace("h", ""))
+    if mins_str:
+        mins = int(mins_str.replace("m", ""))
+    if secs_str:
+        secs = int(secs_str.replace("s", ""))
+    return hours * 3600 + mins * 60 + secs
 
 
 @video_filter

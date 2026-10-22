@@ -1,10 +1,14 @@
-from pymonta.video.functions import build_pipelines
-from pymonta import RemoveAudio
-from pymonta import VideoAdjustments
-from pymonta import get_duration
 import asyncio
 import unittest
-from pymonta import detect_silence_fragments
+
+from pymonta import (
+    RemoveAudio,
+    VideoAdjustments,
+    detect_silence_fragments,
+    get_duration,
+)
+from pymonta.video.filters import _VideoCut
+from pymonta.video.functions import build_pipelines
 
 
 class TestVideoFunctions(unittest.TestCase):
@@ -22,8 +26,8 @@ class TestVideoFunctions(unittest.TestCase):
         real_dur = 30
         self.assertEqual(calc_dur, real_dur)
 
-    def test_build_pipelines(self): 
-        video_filtres = [VideoAdjustments(brightness=1.0)]
+    def test_build_pipelines(self):
+        video_filtres = [VideoAdjustments(brightness=1.0), _VideoCut(1, 5)]
         audio_filtres = [RemoveAudio()]
         vout_p, aout_p = build_pipelines([*video_filtres, *audio_filtres])
 
@@ -32,6 +36,12 @@ class TestVideoFunctions(unittest.TestCase):
 
         self.assertEqual(video_filtres, assigned_vf)
         self.assertEqual(audio_filtres, assigned_af)
+
+        self.assertEqual(
+            vout_p.compile_filter(),
+            "[0:v]eq=brightness=1.0:contrast=1:gamma=1:saturation=1[vout];[vout]select='not(between(t,1,5))',setpts=N/FRAME_RATE/TB[vout];",
+        )
+        self.assertEqual(aout_p.compile_filter(), "[0:a]volume=0[aout];")
 
 
 if __name__ == "__main__":
